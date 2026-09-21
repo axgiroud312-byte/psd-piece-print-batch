@@ -1,3 +1,8 @@
+import { selectAndScanInputRoot, selectTemplateConfigJson } from "./adapters/uxp-input-scanner";
+import { parseInputGroups, parseTemplateConfig, preflightGroups } from "./domain/preflight";
+import { samplePreflightPayload } from "./domain/sample";
+import type { PreflightReport } from "./domain/types";
+
 export type StageId = "template" | "input" | "preview" | "run" | "results";
 
 export interface WorkflowStage {
@@ -67,6 +72,153 @@ function clearElement(element: HTMLElement): void {
   while (element.firstChild) element.removeChild(element.firstChild);
 }
 
+function renderPreflightReport(container: HTMLElement, report: PreflightReport): void {
+  clearElement(container);
+  const templateCard = createElement("section", "template-result");
+  templateCard.appendChild(
+    createElement(
+      "p",
+      "template-result__summary",
+      `${report.templateSummary.garmentPieceCount} 个裁片 · ${report.templateSummary.artworkEntryCount} 个素材入口 · ${report.templateSummary.instanceCount} 个实例`,
+    ),
+  );
+  for (const mapping of report.templateSummary.mappings) {
+    templateCard.appendChild(createElement("p", "template-result__mapping", mapping));
+  }
+  for (const issue of report.templateIssues) {
+    templateCard.appendChild(
+      createElement("p", `group-result__issue group-result__issue--${issue.severity}`, issue.message),
+    );
+  }
+  container.appendChild(templateCard);
+
+  const summary = createElement(
+    "p",
+    "preflight-summary",
+    `${report.groups.length} 组 · ${report.validGroupCount} 组可运行 · ${report.invalidGroupCount} 组需处理`,
+  );
+  container.appendChild(summary);
+
+  for (const group of report.groups) {
+    const card = createElement("section", `group-result group-result--${group.status}`);
+    const header = createElement("div", "group-result__header");
+    appendChildren(
+      header,
+      createElement("strong", "group-result__name", group.groupName),
+      createElement("span", "group-result__status", group.status === "valid" ? "可运行" : "已阻止"),
+    );
+    card.appendChild(header);
+    const assignment = createElement(
+      "p",
+      "group-result__assignment",
+      group.assignments.length > 0
+        ? group.assignments
+            .map((item) => `${item.entryId} / ${item.contentSourceId} ← ${item.fileName}`)
+            .join(" / ")
+        : "没有可提交的素材映射",
+    );
+    card.appendChild(assignment);
+    for (const issue of group.issues) {
+      card.appendChild(
+        createElement("p", `group-result__issue group-result__issue--${issue.severity}`, issue.message),
+      );
+    }
+    container.appendChild(card);
+  }
+}
+
+function renderPreflightTool(container: HTMLElement): void {
+  const tool = createElement("section", "preflight-tool");
+  const templateLabel = createElement(
+    "p",
+    "preflight-tool__label",
+    "模板配置 JSON",
+  );
+  const templateTextarea = createElement("textarea", "preflight-tool__input preflight-tool__input--template");
+  templateTextarea.value = JSON.stringify(samplePreflightPayload.template, null, 2);
+  const templateAction = createElement("button", "secondary-action", "选择模板配置 JSON");
+  templateAction.type = "button";
+  const groupsLabel = createElement(
+    "p",
+    "preflight-tool__label preflight-tool__label--groups",
+    "素材目录清单 JSON（可由下方文件夹扫描替换）",
+  );
+  const groupsTextarea = createElement("textarea", "preflight-tool__input");
+  groupsTextarea.value = JSON.stringify(samplePreflightPayload.groups, null, 2);
+  const scanAction = createElement("button", "secondary-action", "选择素材总文件夹并读取尺寸");
+  scanAction.type = "button";
+  const manifestAction = createElement("button", "primary-action", "预检当前清单");
+  manifestAction.type = "button";
+  const results = createElement("div", "preflight-results");
+
+  templateAction.addEventListener("click", () => {
+    void (async () => {
+      try {
+        const json = await selectTemplateConfigJson();
+        if (!json) return;
+        const template = parseTemplateConfig(json);
+        templateTextarea.value = JSON.stringify(template, null, 2);
+      } catch (error) {
+        clearElement(results);
+        results.appendChild(
+          createElement("p", "preflight-error", error instanceof Error ? error.message : "无法读取模板配置"),
+        );
+      }
+    })();
+  });
+
+  manifestAction.addEventListener("click", () => {
+    try {
+      renderPreflightReport(
+        results,
+        preflightGroups({
+          template: parseTemplateConfig(templateTextarea.value),
+          groups: parseInputGroups(groupsTextarea.value),
+        }),
+      );
+    } catch (error) {
+      clearElement(results);
+      results.appendChild(
+        createElement("p", "preflight-error", error instanceof Error ? error.message : "无法读取清单"),
+      );
+    }
+  });
+
+  scanAction.addEventListener("click", () => {
+    void (async () => {
+      try {
+        scanAction.textContent = "正在读取文件头…";
+        const template = parseTemplateConfig(templateTextarea.value);
+        const groups = await selectAndScanInputRoot();
+        if (!groups) return;
+        const scanned = { template, groups };
+        groupsTextarea.value = JSON.stringify(groups, null, 2);
+        renderPreflightReport(results, preflightGroups(scanned));
+      } catch (error) {
+        clearElement(results);
+        results.appendChild(
+          createElement("p", "preflight-error", error instanceof Error ? error.message : "无法扫描素材目录"),
+        );
+      } finally {
+        scanAction.textContent = "选择素材总文件夹并读取尺寸";
+      }
+    })();
+  });
+
+  appendChildren(
+    tool,
+    templateLabel,
+    templateTextarea,
+    templateAction,
+    groupsLabel,
+    groupsTextarea,
+    scanAction,
+    manifestAction,
+    results,
+  );
+  container.appendChild(tool);
+}
+
 function renderStage(container: HTMLElement, stage: WorkflowStage): void {
   clearElement(container);
 
@@ -80,6 +232,7 @@ function renderStage(container: HTMLElement, stage: WorkflowStage): void {
     createElement("span", undefined, "诊断模式：所有生产操作已锁定"),
   );
   appendChildren(container, eyebrow, title, description, notice);
+  if (stage.id === "input") renderPreflightTool(container);
 }
 
 export function mountApp(root: HTMLElement): void {

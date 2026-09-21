@@ -1,0 +1,549 @@
+import type {
+  ArtworkEntry,
+  ArtworkInstance,
+  FitAnchor,
+  FitRule,
+  GarmentPiece,
+  GroupPreflight,
+  InputFileSnapshot,
+  PreflightIssue,
+  PreflightPayload,
+  PreflightReport,
+  TemplateConfig,
+} from "./types";
+
+const supportedExtensions = new Set(["png", "jpg", "jpeg"]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function requireArray(record: Record<string, unknown>, key: string): unknown[] {
+  const value = record[key];
+  if (!Array.isArray(value)) throw new Error(`字段 ${key} 必须是数组`);
+  return value;
+}
+
+function requireString(record: Record<string, unknown>, key: string): string {
+  const value = record[key];
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(`字段 ${key} 必须是非空字符串`);
+  }
+  return value;
+}
+
+function requireNumber(record: Record<string, unknown>, key: string): number {
+  const value = record[key];
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`字段 ${key} 必须是有限数字`);
+  }
+  return value;
+}
+
+function optionalNumber(record: Record<string, unknown>, key: string): number | undefined {
+  const value = record[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`字段 ${key} 必须是有限数字`);
+  }
+  return value;
+}
+
+function requireBoolean(record: Record<string, unknown>, key: string): boolean {
+  const value = record[key];
+  if (typeof value !== "boolean") throw new Error(`字段 ${key} 必须是布尔值`);
+  return value;
+}
+
+function requireRecord(record: Record<string, unknown>, key: string): Record<string, unknown> {
+  const value = record[key];
+  if (!isRecord(value)) throw new Error(`字段 ${key} 必须是对象`);
+  return value;
+}
+
+function uniqueIssues(values: { id: string; label: string }[]): PreflightIssue[] {
+  const seen = new Set<string>();
+  const issues: PreflightIssue[] = [];
+  for (const value of values) {
+    const normalized = value.id.toLowerCase();
+    if (seen.has(normalized)) {
+      issues.push({
+        severity: "error",
+        code: "duplicate-id",
+        message: `${value.label} ID 重复：${value.id}`,
+      });
+    }
+    seen.add(normalized);
+  }
+  return issues;
+}
+
+function validateEntry(entry: ArtworkEntry): PreflightIssue[] {
+  const issues: PreflightIssue[] = [];
+  const requiredStrings: Array<[string, string]> = [
+    [entry.id, "素材入口 ID"],
+    [entry.name, "素材入口名称"],
+    [entry.inputKey, "输入名称"],
+    [entry.contentSourceId, "内容源 ID"],
+  ];
+  for (const [value, label] of requiredStrings) {
+    if (typeof value !== "string" || value.trim() === "") {
+      issues.push({ severity: "error", code: "invalid-entry", message: `${label}不能为空` });
+    }
+  }
+
+  if (!Number.isInteger(entry.canvas?.width) || entry.canvas.width <= 0) {
+    issues.push({ severity: "error", code: "invalid-canvas", message: `${entry.name} 的画布宽度无效` });
+  }
+  if (!Number.isInteger(entry.canvas?.height) || entry.canvas.height <= 0) {
+    issues.push({ severity: "error", code: "invalid-canvas", message: `${entry.name} 的画布高度无效` });
+  }
+  if (!entry.required && entry.optionalBehavior !== "keep-fixed") {
+    issues.push({
+      severity: "error",
+      code: "missing-optional-behavior",
+      message: `${entry.name} 是可选入口，必须声明缺图时保留固定内容`,
+    });
+  }
+  if (!entry.fit || !["strict", "cover", "contain"].includes(entry.fit.mode)) {
+    issues.push({ severity: "error", code: "invalid-fit", message: `${entry.name} 的素材适配模式无效` });
+  } else if (entry.fit.mode === "contain") {
+    if (entry.fit.allowBlankArea !== true || entry.fit.background.trim() === "") {
+      issues.push({
+        severity: "error",
+        code: "unsafe-contain",
+        message: `${entry.name} 使用完整放入时必须允许空白并声明底色`,
+      });
+    }
+  }
+  if (entry.fit?.anchor?.kind === "offset") {
+    if (!Number.isFinite(entry.fit.anchor.x) || !Number.isFinite(entry.fit.anchor.y)) {
+      issues.push({ severity: "error", code: "invalid-anchor", message: `${entry.name} 的固定偏移无效` });
+    }
+  } else if (entry.fit?.anchor?.kind !== "center") {
+    issues.push({ severity: "error", code: "invalid-anchor", message: `${entry.name} 的锚点无效` });
+  }
+  return issues;
+}
+
+export function validateTemplate(template: TemplateConfig): PreflightIssue[] {
+  const issues: PreflightIssue[] = [];
+  if (template.schemaVersion !== 1) {
+    issues.push({ severity: "error", code: "schema-version", message: "只支持模板结构版本 1" });
+  }
+  if (!template.templateId?.trim() || !template.version?.trim() || !template.masterFingerprint?.trim()) {
+    issues.push({
+      severity: "error",
+      code: "template-identity",
+      message: "模板编号、版本和母版指纹都必须有明确值",
+    });
+  }
+  if (template.garmentPieces.length === 0 || template.artworkEntries.length === 0 || template.instances.length === 0) {
+    issues.push({
+      severity: "error",
+      code: "empty-template",
+      message: "模板必须至少包含一个裁片、一个素材入口和一个实例",
+    });
+  }
+
+  issues.push(
+    ...uniqueIssues(template.garmentPieces.map((piece) => ({ id: piece.id, label: "裁片" }))),
+    ...uniqueIssues(template.artworkEntries.map((entry) => ({ id: entry.id, label: "素材入口" }))),
+    ...uniqueIssues(template.instances.map((instance) => ({ id: instance.id, label: "实例" }))),
+  );
+  for (const entry of template.artworkEntries) issues.push(...validateEntry(entry));
+
+  const pieceIds = new Set(template.garmentPieces.map((piece) => piece.id));
+  const entryIds = new Set(template.artworkEntries.map((entry) => entry.id));
+  const referencedEntries = new Set<string>();
+  const paths = new Map<string, ArtworkInstance>();
+  for (const instance of template.instances) {
+    referencedEntries.add(instance.artworkEntryId);
+    if (!pieceIds.has(instance.garmentPieceId)) {
+      issues.push({
+        severity: "error",
+        code: "unknown-piece",
+        message: `实例 ${instance.id} 引用了不存在的裁片 ${instance.garmentPieceId}`,
+      });
+    }
+    if (!entryIds.has(instance.artworkEntryId)) {
+      issues.push({
+        severity: "error",
+        code: "unknown-entry",
+        message: `实例 ${instance.id} 引用了不存在的素材入口 ${instance.artworkEntryId}`,
+      });
+    }
+    if (!Array.isArray(instance.layerPath) || instance.layerPath.length === 0) {
+      issues.push({
+        severity: "error",
+        code: "missing-layer-path",
+        message: `实例 ${instance.id} 缺少完整图层路径`,
+      });
+    } else {
+      const normalizedPath = instance.layerPath.map((part) => part.toLowerCase()).join("/");
+      const existing = paths.get(normalizedPath);
+      if (existing) {
+        issues.push({
+          severity: "error",
+          code: "duplicate-layer-path",
+          message: `实例 ${existing.id} 与 ${instance.id} 指向同一图层路径`,
+        });
+      } else {
+        paths.set(normalizedPath, instance);
+      }
+    }
+  }
+  for (const entry of template.artworkEntries) {
+    if (!referencedEntries.has(entry.id)) {
+      issues.push({
+        severity: "error",
+        code: "entry-without-instance",
+        message: `素材入口 ${entry.name} 没有绑定任何实例`,
+      });
+    }
+  }
+
+  const contentSources = new Map<string, ArtworkEntry>();
+  for (const entry of template.artworkEntries) {
+    const existing = contentSources.get(entry.contentSourceId);
+    if (!existing) {
+      contentSources.set(entry.contentSourceId, entry);
+      continue;
+    }
+    if (existing.inputKey.toLowerCase() !== entry.inputKey.toLowerCase()) {
+      issues.push({
+        severity: "error",
+        code: "shared-source-conflict",
+        message: `共享内容源 ${entry.contentSourceId} 被分配了不同输入：${existing.inputKey} 与 ${entry.inputKey}`,
+      });
+    }
+    if (existing.canvas.width !== entry.canvas.width || existing.canvas.height !== entry.canvas.height) {
+      issues.push({
+        severity: "error",
+        code: "shared-canvas-conflict",
+        message: `共享内容源 ${entry.contentSourceId} 的内部画布定义不一致`,
+      });
+    }
+    if (
+      existing.required !== entry.required ||
+      existing.optionalBehavior !== entry.optionalBehavior ||
+      JSON.stringify(existing.fit) !== JSON.stringify(entry.fit)
+    ) {
+      issues.push({
+        severity: "error",
+        code: "shared-rule-conflict",
+        message: `共享内容源 ${entry.contentSourceId} 的必需状态或适配规则不一致`,
+      });
+    }
+  }
+  return issues;
+}
+
+function fileParts(fileName: string): { stem: string; extension: string } {
+  const baseName = fileName.replace(/\\/g, "/").split("/").pop() ?? fileName;
+  const separator = baseName.lastIndexOf(".");
+  if (separator <= 0) return { stem: baseName.toLowerCase(), extension: "" };
+  return {
+    stem: baseName.slice(0, separator).toLowerCase(),
+    extension: baseName.slice(separator + 1).toLowerCase(),
+  };
+}
+
+function preflightGroup(
+  template: TemplateConfig,
+  templateIssues: PreflightIssue[],
+  groupName: string,
+  files: InputFileSnapshot[],
+): GroupPreflight {
+  const issues: PreflightIssue[] = [...templateIssues];
+  const assignments: GroupPreflight["assignments"] = [];
+  const assignedSources = new Set<string>();
+  const supportedByStem = new Map<string, InputFileSnapshot[]>();
+  const matchedNames = new Set<string>();
+
+  for (const file of files) {
+    const parts = fileParts(file.name);
+    if (!supportedExtensions.has(parts.extension)) {
+      issues.push({
+        severity: "warning",
+        code: "unsupported-file",
+        message: `未配置或不支持的文件：${file.name}`,
+        fileName: file.name,
+      });
+      continue;
+    }
+    const matches = supportedByStem.get(parts.stem) ?? [];
+    matches.push(file);
+    supportedByStem.set(parts.stem, matches);
+  }
+
+  for (const entry of template.artworkEntries) {
+    const matches = supportedByStem.get(entry.inputKey.toLowerCase()) ?? [];
+    if (matches.length === 0) {
+      issues.push({
+        severity: entry.required ? "error" : "info",
+        code: entry.required ? "missing-required" : "optional-fixed",
+        message: entry.required
+          ? `缺少必需素材 ${entry.inputKey}`
+          : `未提供可选素材 ${entry.inputKey}，将保留登记的固定内容`,
+        entryId: entry.id,
+      });
+      continue;
+    }
+    if (matches.length > 1) {
+      issues.push({
+        severity: "error",
+        code: "duplicate-match",
+        message: `${entry.inputKey} 同时匹配 ${matches.map((match) => match.name).join("、")}`,
+        entryId: entry.id,
+      });
+      for (const match of matches) matchedNames.add(match.name);
+      continue;
+    }
+
+    const file = matches[0];
+    matchedNames.add(file.name);
+    if (file.metadataError) {
+      issues.push({
+        severity: "error",
+        code: "unreadable-metadata",
+        message: `${file.name} 无法读取图像尺寸：${file.metadataError}`,
+        entryId: entry.id,
+        fileName: file.name,
+      });
+      continue;
+    }
+    if (!Number.isInteger(file.width) || !Number.isInteger(file.height) || file.width! <= 0 || file.height! <= 0) {
+      issues.push({
+        severity: "error",
+        code: "missing-dimensions",
+        message: `${file.name} 缺少有效的像素尺寸`,
+        entryId: entry.id,
+        fileName: file.name,
+      });
+      continue;
+    }
+    if (entry.fit.mode === "strict") {
+      if (file.width !== entry.canvas.width || file.height !== entry.canvas.height) {
+        issues.push({
+          severity: "error",
+          code: "strict-size-mismatch",
+          message: `${file.name} 为 ${file.width}×${file.height}，要求 ${entry.canvas.width}×${entry.canvas.height}`,
+          entryId: entry.id,
+          fileName: file.name,
+        });
+        continue;
+      }
+    }
+    if (entry.fit.anchor.kind === "offset") {
+      const scale =
+        entry.fit.mode === "contain"
+          ? Math.min(entry.canvas.width / file.width!, entry.canvas.height / file.height!)
+          : Math.max(entry.canvas.width / file.width!, entry.canvas.height / file.height!);
+      const scaledWidth = file.width! * scale;
+      const scaledHeight = file.height! * scale;
+      const maxX = Math.max(0, Math.abs(scaledWidth - entry.canvas.width) / 2);
+      const maxY = Math.max(0, Math.abs(scaledHeight - entry.canvas.height) / 2);
+      if (Math.abs(entry.fit.anchor.x) > maxX || Math.abs(entry.fit.anchor.y) > maxY) {
+        issues.push({
+          severity: "error",
+          code: "offset-out-of-range",
+          message: `${entry.name} 的固定偏移超出可用范围（横向 ±${maxX.toFixed(2)}，纵向 ±${maxY.toFixed(2)}）`,
+          entryId: entry.id,
+          fileName: file.name,
+        });
+        continue;
+      }
+    }
+    if (!assignedSources.has(entry.contentSourceId)) {
+      assignments.push({
+        entryId: entry.id,
+        contentSourceId: entry.contentSourceId,
+        fileName: file.name,
+      });
+      assignedSources.add(entry.contentSourceId);
+    }
+  }
+
+  for (const file of files) {
+    const parts = fileParts(file.name);
+    if (supportedExtensions.has(parts.extension) && !matchedNames.has(file.name)) {
+      issues.push({
+        severity: "warning",
+        code: "extra-file",
+        message: `没有素材入口使用文件 ${file.name}`,
+        fileName: file.name,
+      });
+    }
+  }
+
+  return {
+    groupName,
+    status: issues.some((issue) => issue.severity === "error") ? "invalid" : "valid",
+    assignments,
+    issues,
+  };
+}
+
+export function preflightGroups(payload: PreflightPayload): PreflightReport {
+  const templateIssues = validateTemplate(payload.template);
+  const groups = payload.groups.map((group) =>
+    preflightGroup(payload.template, templateIssues, group.name, group.files),
+  );
+  return {
+    templateIssues,
+    templateSummary: {
+      garmentPieceCount: payload.template.garmentPieces.length,
+      artworkEntryCount: payload.template.artworkEntries.length,
+      instanceCount: payload.template.instances.length,
+      mappings: payload.template.instances.map((instance) => {
+        const piece = payload.template.garmentPieces.find((item) => item.id === instance.garmentPieceId);
+        const entry = payload.template.artworkEntries.find((item) => item.id === instance.artworkEntryId);
+        return `${piece?.name ?? instance.garmentPieceId} ← ${entry?.name ?? instance.artworkEntryId} · ${instance.layerPath.join("/")}`;
+      }),
+    },
+    groups,
+    validGroupCount: groups.filter((group) => group.status === "valid").length,
+    invalidGroupCount: groups.filter((group) => group.status === "invalid").length,
+  };
+}
+
+function parseAnchor(value: unknown): FitAnchor {
+  if (!isRecord(value)) throw new Error("素材适配锚点必须是对象");
+  const kind = requireString(value, "kind");
+  if (kind === "center") return { kind };
+  if (kind === "offset") {
+    return { kind, x: requireNumber(value, "x"), y: requireNumber(value, "y") };
+  }
+  throw new Error(`不支持的锚点：${kind}`);
+}
+
+function parseFit(value: unknown): FitRule {
+  if (!isRecord(value)) throw new Error("素材适配规则必须是对象");
+  const mode = requireString(value, "mode");
+  const anchor = parseAnchor(value.anchor);
+  if (mode === "strict" || mode === "cover") return { mode, anchor };
+  if (mode === "contain") {
+    if (requireBoolean(value, "allowBlankArea") !== true) {
+      throw new Error("完整放入必须明确允许空白区域");
+    }
+    return { mode, anchor, allowBlankArea: true, background: requireString(value, "background") };
+  }
+  throw new Error(`不支持的素材适配模式：${mode}`);
+}
+
+function parseGarmentPiece(value: unknown): GarmentPiece {
+  if (!isRecord(value)) throw new Error("裁片必须是对象");
+  return { id: requireString(value, "id"), name: requireString(value, "name") };
+}
+
+function parseArtworkEntry(value: unknown): ArtworkEntry {
+  if (!isRecord(value)) throw new Error("素材入口必须是对象");
+  const canvas = requireRecord(value, "canvas");
+  const required = requireBoolean(value, "required");
+  const optionalBehavior = value.optionalBehavior;
+  if (optionalBehavior !== undefined && optionalBehavior !== "keep-fixed") {
+    throw new Error("可选入口行为只支持 keep-fixed");
+  }
+  return {
+    id: requireString(value, "id"),
+    name: requireString(value, "name"),
+    inputKey: requireString(value, "inputKey"),
+    contentSourceId: requireString(value, "contentSourceId"),
+    required,
+    optionalBehavior,
+    canvas: {
+      width: requireNumber(canvas, "width"),
+      height: requireNumber(canvas, "height"),
+    },
+    fit: parseFit(value.fit),
+  };
+}
+
+function parseArtworkInstance(value: unknown): ArtworkInstance {
+  if (!isRecord(value)) throw new Error("实例必须是对象");
+  const layerPath = requireArray(value, "layerPath").map((part) => {
+    if (typeof part !== "string" || part.trim() === "") throw new Error("图层路径必须由非空字符串组成");
+    return part;
+  });
+  return {
+    id: requireString(value, "id"),
+    garmentPieceId: requireString(value, "garmentPieceId"),
+    artworkEntryId: requireString(value, "artworkEntryId"),
+    layerPath,
+  };
+}
+
+function parseInputFile(value: unknown): InputFileSnapshot {
+  if (!isRecord(value)) throw new Error("素材文件必须是对象");
+  const width = optionalNumber(value, "width");
+  const height = optionalNumber(value, "height");
+  const ppi = optionalNumber(value, "ppi");
+  const metadataError = value.metadataError;
+  if (metadataError !== undefined && typeof metadataError !== "string") {
+    throw new Error("字段 metadataError 必须是字符串");
+  }
+  return { name: requireString(value, "name"), width, height, ppi, metadataError };
+}
+
+function parseTemplateRecord(template: Record<string, unknown>): TemplateConfig {
+  const schemaVersion = requireNumber(template, "schemaVersion");
+  if (schemaVersion !== 1) throw new Error("只支持模板结构版本 1");
+  return {
+    schemaVersion,
+    templateId: requireString(template, "templateId"),
+    version: requireString(template, "version"),
+    masterFingerprint: requireString(template, "masterFingerprint"),
+    garmentPieces: requireArray(template, "garmentPieces").map(parseGarmentPiece),
+    artworkEntries: requireArray(template, "artworkEntries").map(parseArtworkEntry),
+    instances: requireArray(template, "instances").map(parseArtworkInstance),
+  };
+}
+
+function parseGroupsValue(groups: unknown): PreflightPayload["groups"] {
+  if (!Array.isArray(groups)) throw new Error("素材清单必须是数组");
+  return groups.map((group) => {
+    if (!isRecord(group)) throw new Error("每个素材组都必须是对象");
+    return {
+      name: requireString(group, "name"),
+      files: requireArray(group, "files").map(parseInputFile),
+    };
+  });
+}
+
+export function parseTemplateConfig(json: string): TemplateConfig {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    throw new Error("模板配置不是有效的 JSON");
+  }
+  if (!isRecord(parsed)) throw new Error("模板配置必须是对象");
+  return parseTemplateRecord(parsed);
+}
+
+export function parseInputGroups(json: string): PreflightPayload["groups"] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    throw new Error("素材清单不是有效的 JSON");
+  }
+  return parseGroupsValue(parsed);
+}
+
+export function parsePreflightPayload(json: string): PreflightPayload {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    throw new Error("清单不是有效的 JSON");
+  }
+  if (!isRecord(parsed) || !isRecord(parsed.template)) {
+    throw new Error("清单必须包含 template 对象");
+  }
+  return {
+    template: parseTemplateRecord(parsed.template),
+    groups: parseGroupsValue(parsed.groups),
+  };
+}

@@ -36,4 +36,15 @@ describe("diagnostic panel", () => {
 
     expect(document.querySelector(".stage-detail__notice")?.textContent).toContain("所有生产操作已锁定");
   });
+
+  it("imports the sample manifest and reports valid and blocked groups", () => {
+    document.querySelector<HTMLButtonElement>('[data-stage="input"]')!.click();
+    document.querySelector<HTMLButtonElement>(".primary-action")!.click();
+
+    expect(document.querySelector(".preflight-summary")?.textContent).toContain("2 组 · 1 组可运行 · 1 组需处理");
+    expect(document.querySelector(".template-result")?.textContent).toContain("4 个裁片 · 3 个素材入口 · 4 个实例");
+    expect(document.querySelector(".template-result")?.textContent).toContain("左袖 ← 袖片共享入口");
+    expect(document.body.textContent).toContain("款式001-蓝花");
+    expect(document.body.textContent).toContain("缺少必需素材 back");
+  });
 });

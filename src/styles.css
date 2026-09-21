@@ -236,6 +236,147 @@ button {
   font-weight: 700;
 }
 
+.preflight-tool {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.preflight-tool__label {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.preflight-tool__label--groups {
+  margin-top: 12px;
+}
+
+.preflight-tool__input {
+  width: 100%;
+  min-height: 156px;
+  padding: 10px;
+  resize: vertical;
+  color: #d7dee5;
+  border: 1px solid var(--line);
+  background: #0d1217;
+  font-family: Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.preflight-tool__input--template {
+  min-height: 210px;
+}
+
+.primary-action,
+.secondary-action {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px 12px;
+  color: var(--ink);
+  border: 1px solid var(--signal);
+  background: var(--signal);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.secondary-action {
+  color: var(--paper);
+  border-color: var(--line);
+  background: var(--surface-high);
+}
+
+.preflight-results {
+  margin-top: 14px;
+}
+
+.preflight-summary,
+.preflight-error {
+  margin: 0 0 10px;
+  padding: 9px 10px;
+  color: var(--paper);
+  border-left: 3px solid var(--signal);
+  background: var(--surface-high);
+  font-size: 11px;
+}
+
+.preflight-error {
+  color: #ffd0cc;
+  border-left-color: #e76359;
+}
+
+.group-result {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: rgba(13, 18, 23, 0.65);
+}
+
+.template-result {
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface-high);
+}
+
+.template-result__summary,
+.template-result__mapping {
+  margin: 0;
+  color: var(--paper);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.template-result__mapping {
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.group-result--invalid {
+  border-left: 3px solid #e76359;
+}
+
+.group-result--valid {
+  border-left: 3px solid #68b184;
+}
+
+.group-result__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.group-result__name {
+  font-size: 11px;
+}
+
+.group-result__status {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.group-result__assignment,
+.group-result__issue {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.group-result__issue--error {
+  color: #ffaba4;
+}
+
+.group-result__issue--warning {
+  color: #f4c477;
+}
+
+.group-result__issue--info {
+  color: #9ebbd4;
+}
+
 @media (max-width: 350px) {
   .app-shell {
     padding-right: 12px;
