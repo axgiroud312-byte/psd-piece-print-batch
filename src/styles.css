@@ -1,0 +1,248 @@
+:root {
+  color: #e9edf2;
+  background: #11161c;
+  font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  --ink: #11161c;
+  --surface: #19212a;
+  --surface-high: #222d38;
+  --line: #354250;
+  --muted: #91a0ae;
+  --paper: #e9edf2;
+  --signal: #f0a63a;
+  --signal-soft: rgba(240, 166, 58, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 300px;
+  margin: 0;
+  background: var(--ink);
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.app-shell {
+  min-height: 100vh;
+  padding: 22px 18px 18px;
+}
+
+.masthead {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 22px;
+}
+
+.brand-mark {
+  display: flex;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  margin-right: 14px;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink);
+  background: var(--signal);
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.kicker,
+.section-label {
+  margin: 0;
+  color: var(--signal);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+.masthead__title {
+  margin: 5px 0 3px;
+  color: var(--paper);
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.masthead__subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.capability-card {
+  position: relative;
+  margin-bottom: 24px;
+  padding: 16px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.capability-card::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 44px;
+  height: 3px;
+  background: var(--signal);
+  content: "";
+}
+
+.capability-card__header,
+.diagnostics {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.status-pill {
+  padding: 4px 7px;
+  color: var(--signal);
+  border: 1px solid rgba(240, 166, 58, 0.5);
+  background: var(--signal-soft);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.version {
+  color: var(--muted);
+  font-family: Consolas, monospace;
+  font-size: 11px;
+}
+
+.capability-card__title {
+  margin: 14px 0 7px;
+  font-size: 16px;
+}
+
+.capability-card__body {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.workflow {
+  margin-top: 4px;
+}
+
+.stage-nav {
+  display: flex;
+  margin-top: 10px;
+  border: 1px solid var(--line);
+}
+
+.stage-nav__item {
+  display: flex;
+  min-width: 0;
+  padding: 10px 5px;
+  flex: 1 1 20%;
+  flex-direction: column;
+  align-items: center;
+  color: var(--muted);
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  cursor: pointer;
+}
+
+.stage-nav__item:last-child {
+  border-right: 0;
+}
+
+.stage-nav__item.is-active {
+  color: var(--paper);
+  background: var(--surface-high);
+  box-shadow: inset 0 -2px var(--signal);
+}
+
+.stage-nav__number {
+  margin-bottom: 3px;
+  font-family: Consolas, monospace;
+  font-size: 9px;
+}
+
+.stage-nav__label {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stage-detail {
+  min-height: 166px;
+  padding: 24px 18px 18px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  background: rgba(25, 33, 42, 0.62);
+}
+
+.stage-detail__eyebrow {
+  margin: 0 0 9px;
+  color: var(--signal);
+  font-family: Consolas, monospace;
+  font-size: 10px;
+}
+
+.stage-detail__title {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.stage-detail__description {
+  max-width: 42ch;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.stage-detail__notice {
+  display: flex;
+  margin-top: 18px;
+  align-items: center;
+  color: #c7d0d9;
+  font-size: 11px;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--signal);
+  box-shadow: 0 0 0 4px var(--signal-soft);
+}
+
+.diagnostics {
+  margin-top: 18px;
+  padding-top: 12px;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  font-family: Consolas, monospace;
+  font-size: 9px;
+}
+
+.diagnostics__label {
+  color: var(--signal);
+  font-weight: 700;
+}
+
+@media (max-width: 350px) {
+  .app-shell {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .stage-nav__label {
+    font-size: 11px;
+  }
+}

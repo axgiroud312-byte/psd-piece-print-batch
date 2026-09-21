@@ -1,0 +1,164 @@
+export type StageId = "template" | "input" | "preview" | "run" | "results";
+
+export interface WorkflowStage {
+  id: StageId;
+  number: string;
+  label: string;
+  title: string;
+  description: string;
+}
+
+export const workflowStages: WorkflowStage[] = [
+  {
+    id: "template",
+    number: "01",
+    label: "模板",
+    title: "登记生产母版",
+    description: "读取并版本化已经认可的 PSD 结构。当前诊断构建不会修改任何 Photoshop 文档。",
+  },
+  {
+    id: "input",
+    number: "02",
+    label: "输入",
+    title: "检查素材分组",
+    description: "按固定名称规则预检 PNG 与 JPEG 素材，不通过文件排序猜测用途。",
+  },
+  {
+    id: "preview",
+    number: "03",
+    label: "预览",
+    title: "先试套一组",
+    description: "新模板和新规则必须先通过单组试套，才能进入正式批量。",
+  },
+  {
+    id: "run",
+    number: "04",
+    label: "运行",
+    title: "串行处理批次",
+    description: "每组从干净母版开始，未完成结果不会被登记为成功。",
+  },
+  {
+    id: "results",
+    number: "05",
+    label: "结果",
+    title: "复核并处理失败组",
+    description: "查看完成、失败、中断和待确认状态，并只重试符合条件的组。",
+  },
+];
+
+const pluginVersion = "0.1.0";
+
+function createElement<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  text?: string,
+): HTMLElementTagNameMap[K] {
+  const element = document.createElement(tag);
+  if (className) element.className = className;
+  if (text) element.textContent = text;
+  return element;
+}
+
+function appendChildren(parent: Node, ...children: Node[]): void {
+  for (const child of children) parent.appendChild(child);
+}
+
+function clearElement(element: HTMLElement): void {
+  while (element.firstChild) element.removeChild(element.firstChild);
+}
+
+function renderStage(container: HTMLElement, stage: WorkflowStage): void {
+  clearElement(container);
+
+  const eyebrow = createElement("p", "stage-detail__eyebrow", `${stage.number} / ${stage.label}`);
+  const title = createElement("h2", "stage-detail__title", stage.title);
+  const description = createElement("p", "stage-detail__description", stage.description);
+  const notice = createElement("div", "stage-detail__notice");
+  appendChildren(
+    notice,
+    createElement("span", "status-dot"),
+    createElement("span", undefined, "诊断模式：所有生产操作已锁定"),
+  );
+  appendChildren(container, eyebrow, title, description, notice);
+}
+
+export function mountApp(root: HTMLElement): void {
+  clearElement(root);
+
+  const shell = createElement("section", "app-shell");
+  const header = createElement("header", "masthead");
+  const brand = createElement("div", "brand-mark", "裁");
+  const heading = createElement("div", "masthead__copy");
+  appendChildren(
+    heading,
+    createElement("p", "kicker", "PHOTOSHOP UXP / DIAGNOSTIC"),
+    createElement("h1", "masthead__title", "裁片印花批量套图"),
+    createElement("p", "masthead__subtitle", "复用已认可的裁片母版，不重新排版。"),
+  );
+  appendChildren(header, brand, heading);
+
+  const status = createElement("section", "capability-card");
+  const statusHeader = createElement("div", "capability-card__header");
+  appendChildren(
+    statusHeader,
+    createElement("span", "status-pill", "待 M0 验证"),
+    createElement("span", "version", `v${pluginVersion}`),
+  );
+  appendChildren(
+    status,
+    statusHeader,
+    createElement("h2", "capability-card__title", "构建通过，Photoshop 兼容性未验证"),
+    createElement(
+      "p",
+      "capability-card__body",
+      "尚未在真实 Photoshop 中加载，也未取得真实 PSD、三组印花和工厂规范。当前结果仅来自自动化构建与测试。",
+    ),
+  );
+
+  const workflow = createElement("section", "workflow");
+  workflow.appendChild(createElement("p", "section-label", "工作流"));
+  const navigation = createElement("div", "stage-nav");
+  const detail = createElement("article", "stage-detail");
+
+  const buttons = workflowStages.map((stage, index) => {
+    const button = createElement("button", "stage-nav__item");
+    button.type = "button";
+    button.dataset.stage = stage.id;
+    button.dataset.selected = index === 0 ? "true" : "false";
+    if (index === 0) button.classList.add("is-active");
+    appendChildren(button, createElement("span", "stage-nav__number", stage.number));
+    const label = createElement(
+      "span",
+      "stage-nav__label",
+      index === 0 ? `${stage.label}（当前）` : stage.label,
+    );
+    button.appendChild(label);
+    button.addEventListener("click", () => {
+      buttons.forEach((candidate, candidateIndex) => {
+        candidate.classList.toggle("is-active", candidate === button);
+        candidate.dataset.selected = candidate === button ? "true" : "false";
+        const candidateLabel = candidate.querySelector<HTMLElement>(".stage-nav__label");
+        if (candidateLabel) {
+          const text = workflowStages[candidateIndex].label;
+          candidateLabel.textContent = candidate === button ? `${text}（当前）` : text;
+        }
+      });
+      renderStage(detail, stage);
+    });
+    return button;
+  });
+
+  for (const button of buttons) navigation.appendChild(button);
+  renderStage(detail, workflowStages[0]);
+  appendChildren(workflow, navigation, detail);
+
+  const footer = createElement("footer", "diagnostics");
+  appendChildren(
+    footer,
+    createElement("span", "diagnostics__label", "DIAG"),
+    createElement("span", "diagnostics__value", "Manifest v5 · API v2 · Windows first"),
+  );
+
+  appendChildren(shell, header, status, workflow, footer);
+  root.appendChild(shell);
+}

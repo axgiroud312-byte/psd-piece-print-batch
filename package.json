@@ -1,0 +1,28 @@
+{
+  "name": "psd-piece-print-batch",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Photoshop UXP panel for applying artwork to registered garment-piece PSD templates.",
+  "engines": {
+    "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
+  },
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "dev": "webpack --mode development --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "npm run clean && webpack --mode production",
+    "check": "npm run typecheck && npm run test && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "copy-webpack-plugin": "^13.0.1",
+    "jsdom": "^27.0.0",
+    "ts-loader": "^9.5.4",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4",
+    "webpack": "^5.101.3",
+    "webpack-cli": "^6.0.1"
+  }
+}
