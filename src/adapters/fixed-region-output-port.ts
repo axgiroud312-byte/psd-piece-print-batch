@@ -5,6 +5,7 @@ import type {
   TemplateConfig,
 } from "../domain/types";
 import { fingerprintBytes, fingerprintValue } from "../workflow/fingerprint";
+import type { BatchRecoveryPort, CommitReconciliation } from "../workflow/run-batch";
 import type {
   CommittedOutput,
   DraftOutput,
@@ -24,6 +25,7 @@ export interface OutputStorage {
   createExclusiveDirectory(location: string): Promise<void>;
   writeFile(location: string, bytes: Uint8Array): Promise<void>;
   readFile(location: string): Promise<Uint8Array>;
+  removeFile(location: string): Promise<void>;
   listFiles(location: string): Promise<string[]>;
   promoteDirectoryExclusive(temporaryLocation: string, finalLocation: string): Promise<void>;
   removeDirectory(location: string): Promise<void>;
@@ -83,6 +85,17 @@ export const UNVERIFIED_OUTPUT_CAPABILITY: OutputCapabilityGate = {
 };
 
 export const OUTPUT_IMPLEMENTATION_VERSION = "fixed-region-output-v1";
+const OWNERSHIP_FILE_NAME = ".psd-batch-owner.json";
+
+interface OwnershipMarker {
+  schemaVersion?: unknown;
+  owner?: unknown;
+  runId?: unknown;
+  groupName?: unknown;
+  taskFingerprint?: unknown;
+  attemptId?: unknown;
+  stagingLocation?: unknown;
+}
 
 export interface FixedRegionOutputPortOptions {
   outputRoot: string;
@@ -206,10 +219,11 @@ function sameNames(actual: string[], expected: string[]): boolean {
   return JSON.stringify(normalize(actual)) === JSON.stringify(normalize(expected));
 }
 
-export class FixedRegionOutputPort implements PhotoshopOutputPort {
+export class FixedRegionOutputPort implements PhotoshopOutputPort, BatchRecoveryPort {
   private readonly capability: OutputCapabilityGate;
   private readonly now: () => string;
   private readonly ownedStaging = new Map<string, Set<string>>();
+  private readonly ownedSidecars = new Map<string, Set<string>>();
   private readonly draftLimits = new Map<string, Map<string, OutputCombinationCapability>>();
   private readonly verifiedDrafts = new Map<string, string>();
 
@@ -286,13 +300,49 @@ export class FixedRegionOutputPort implements PhotoshopOutputPort {
     scope.temporaryLocations.push(location);
   }
 
+  private ownSidecar(scope: ExecutionScope, location: string): void {
+    const locations = this.ownedSidecars.get(scope.scopeId) ?? new Set<string>();
+    locations.add(location);
+    this.ownedSidecars.set(scope.scopeId, locations);
+    scope.temporaryLocations.push(location);
+  }
+
   private assertOwned(scope: ExecutionScope, output: DraftOutput | VerifiedOutput): void {
     if (!this.ownedStaging.get(scope.scopeId)?.has(output.temporaryLocation)) {
       throw new Error("输出暂存目录不属于当前执行作用域");
     }
   }
 
-  private plan(runId: string, template: TemplateConfig, group: InputGroupSnapshot, pluginVersion: string) {
+  private async markerMatchesScope(
+    scope: ExecutionScope,
+    markerLocation: string,
+    stagingLocation: string,
+  ): Promise<boolean> {
+    if (!(await this.options.storage.exists(markerLocation))) return false;
+    try {
+      const marker = JSON.parse(
+        new TextDecoder().decode(await this.options.storage.readFile(markerLocation)),
+      ) as OwnershipMarker;
+      return (
+        marker.schemaVersion === 1 &&
+        marker.owner === "psd-piece-print-batch" &&
+        marker.runId === scope.runId &&
+        marker.taskFingerprint === scope.taskFingerprint &&
+        marker.attemptId === scope.attemptId &&
+        marker.stagingLocation === stagingLocation
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  private plan(
+    runId: string,
+    template: TemplateConfig,
+    group: InputGroupSnapshot,
+    pluginVersion: string,
+    attemptId: string,
+  ) {
     this.assertCapability(template, group, pluginVersion);
     assertSafeSegment(runId, "运行编号");
     assertSafeSegment(group.name, "素材组名称");
@@ -304,7 +354,9 @@ export class FixedRegionOutputPort implements PhotoshopOutputPort {
     for (const { target } of targets) {
       assertSafeSegment(target.fileName, "输出文件名");
       const normalized = target.fileName.toLowerCase();
-      if (normalized === "result.json" || names.has(normalized)) throw new Error(`输出文件名冲突：${target.fileName}`);
+      if (normalized === "result.json" || normalized === OWNERSHIP_FILE_NAME || names.has(normalized)) {
+        throw new Error(`输出文件名冲突：${target.fileName}`);
+      }
       names.add(normalized);
     }
     const runLocation = joinLocation(this.options.outputRoot, runId);
@@ -314,7 +366,7 @@ export class FixedRegionOutputPort implements PhotoshopOutputPort {
       finalLocation: joinLocation(runLocation, group.name),
       stagingLocation: joinLocation(
         runLocation,
-        `.staging-${fingerprintValue({ runId, groupName: group.name }).slice(0, 16)}`,
+        `.staging-${fingerprintValue({ runId, groupName: group.name, attemptId }).slice(0, 16)}`,
       ),
     };
   }
@@ -324,8 +376,10 @@ export class FixedRegionOutputPort implements PhotoshopOutputPort {
     template: TemplateConfig,
     group: InputGroupSnapshot,
     pluginVersion: string,
+    attemptId = fingerprintValue({ runId, groupName: group.name, taskFingerprint: "direct" }),
+    _taskFingerprint = "unavailable",
   ): Promise<void> {
-    const plan = this.plan(runId, template, group, pluginVersion);
+    const plan = this.plan(runId, template, group, pluginVersion, attemptId);
     if (await this.options.storage.exists(plan.finalLocation)) {
       throw new Error(`输出目录已存在，禁止覆盖：${plan.finalLocation}`);
     }
@@ -344,16 +398,38 @@ export class FixedRegionOutputPort implements PhotoshopOutputPort {
     photoshopVersion: string,
     documentControl?: ModalDocumentControl,
   ): Promise<DraftOutput> {
-    await this.preflight(scope.runId, template, group, pluginVersion);
+    await this.preflight(
+      scope.runId,
+      template,
+      group,
+      pluginVersion,
+      scope.attemptId,
+      scope.taskFingerprint,
+    );
     const { targets, runLocation, finalLocation, stagingLocation } = this.plan(
       scope.runId,
       template,
       group,
       pluginVersion,
+      scope.attemptId,
     );
+    const ownershipLocation = joinLocation(stagingLocation, OWNERSHIP_FILE_NAME);
     await this.options.storage.ensureDirectory(runLocation);
     await this.options.storage.createExclusiveDirectory(stagingLocation);
     this.own(scope, stagingLocation);
+    await this.options.storage.writeFile(
+      ownershipLocation,
+      new TextEncoder().encode(JSON.stringify({
+        schemaVersion: 1,
+        owner: "psd-piece-print-batch",
+        runId: scope.runId,
+        groupName: group.name,
+        taskFingerprint: scope.taskFingerprint,
+        attemptId: scope.attemptId,
+        stagingLocation,
+      })),
+    );
+    this.ownSidecar(scope, ownershipLocation);
     this.draftLimits.set(
       stagingLocation,
       new Map(targets.map(({ target }) => [target.fileName.toLowerCase(), this.capabilityFor(target)])),
@@ -382,6 +458,7 @@ export class FixedRegionOutputPort implements PhotoshopOutputPort {
     }
     return {
       temporaryLocation: stagingLocation,
+      ownershipLocation,
       finalLocation,
       groupName: group.name,
       capabilityProfileId: template.output.capabilityProfileId,
@@ -410,7 +487,8 @@ export class FixedRegionOutputPort implements PhotoshopOutputPort {
   ): Promise<VerifiedOutput> {
     this.assertOwned(scope, output);
     const expectedNames = output.expectedArtifacts.map((artifact) => artifact.name);
-    const exportedNames = await this.options.storage.listFiles(output.temporaryLocation);
+    const exportedNames = (await this.options.storage.listFiles(output.temporaryLocation))
+      .filter((name) => name.toLowerCase() !== OWNERSHIP_FILE_NAME);
     if (!sameNames(exportedNames, expectedNames)) throw new Error("输出文件数量或名称与登记目标不一致");
 
     const artifacts: OutputArtifact[] = [];
@@ -478,7 +556,9 @@ export class FixedRegionOutputPort implements PhotoshopOutputPort {
     ) {
       throw new Error("质量报告内容不完整");
     }
-    if (!sameNames(await this.options.storage.listFiles(output.temporaryLocation), [...expectedNames, "result.json"])) {
+    const verifiedNames = (await this.options.storage.listFiles(output.temporaryLocation))
+      .filter((name) => name.toLowerCase() !== OWNERSHIP_FILE_NAME);
+    if (!sameNames(verifiedNames, [...expectedNames, "result.json"])) {
       throw new Error("质量报告写入后的文件数量不正确");
     }
     artifacts.push({
@@ -496,7 +576,9 @@ export class FixedRegionOutputPort implements PhotoshopOutputPort {
     if (this.verifiedDrafts.get(output.temporaryLocation) !== output.taskFingerprint) {
       throw new Error("输出尚未完成重读验证，禁止提交");
     }
-    if (!sameNames(await this.options.storage.listFiles(output.temporaryLocation), output.artifacts.map((item) => item.name))) {
+    const committedNames = (await this.options.storage.listFiles(output.temporaryLocation))
+      .filter((name) => name.toLowerCase() !== OWNERSHIP_FILE_NAME);
+    if (!sameNames(committedNames, output.artifacts.map((item) => item.name))) {
       throw new Error("验证后输出文件清单发生变化");
     }
     for (const artifact of output.artifacts) {
@@ -509,21 +591,31 @@ export class FixedRegionOutputPort implements PhotoshopOutputPort {
       throw new Error(`输出目录已存在，禁止覆盖：${output.finalLocation}`);
     }
     await this.options.storage.promoteDirectoryExclusive(output.temporaryLocation, output.finalLocation);
+    const finalOwnershipLocation = joinLocation(output.finalLocation, OWNERSHIP_FILE_NAME);
+    const sidecars = this.ownedSidecars.get(scope.scopeId);
+    if (output.ownershipLocation && sidecars?.delete(output.ownershipLocation)) sidecars.add(finalOwnershipLocation);
     this.ownedStaging.get(scope.scopeId)?.delete(output.temporaryLocation);
     this.draftLimits.delete(output.temporaryLocation);
     this.verifiedDrafts.delete(output.temporaryLocation);
-    scope.temporaryLocations = scope.temporaryLocations.filter((location) => location !== output.temporaryLocation);
+    scope.temporaryLocations = scope.temporaryLocations
+      .filter((location) => location !== output.temporaryLocation)
+      .map((location) => location === output.ownershipLocation ? finalOwnershipLocation : location);
     return { location: output.finalLocation, artifacts: output.artifacts.map((artifact) => ({ ...artifact })) };
   }
 
   async cleanup(scope: ExecutionScope): Promise<void> {
     const locations = this.ownedStaging.get(scope.scopeId);
-    if (!locations) return;
+    const sidecars = this.ownedSidecars.get(scope.scopeId);
+    if (!locations && !sidecars) return;
     const errors: string[] = [];
-    for (const location of [...locations]) {
+    for (const location of [...(locations ?? [])]) {
       try {
+        const markerLocation = joinLocation(location, OWNERSHIP_FILE_NAME);
+        if (!(await this.markerMatchesScope(scope, markerLocation, location))) {
+          throw new Error(`无法证明暂存目录属于当前执行：${location}`);
+        }
         await this.options.storage.removeDirectory(location);
-        locations.delete(location);
+        locations?.delete(location);
         this.draftLimits.delete(location);
         this.verifiedDrafts.delete(location);
         scope.temporaryLocations = scope.temporaryLocations.filter((candidate) => candidate !== location);
@@ -531,7 +623,156 @@ export class FixedRegionOutputPort implements PhotoshopOutputPort {
         errors.push(error instanceof Error ? error.message : `无法清理 ${location}`);
       }
     }
-    if (locations.size === 0) this.ownedStaging.delete(scope.scopeId);
+    for (const location of [...(sidecars ?? [])]) {
+      try {
+        if (await this.options.storage.exists(location)) {
+          const marker = JSON.parse(
+            new TextDecoder().decode(await this.options.storage.readFile(location)),
+          ) as OwnershipMarker;
+          if (
+            marker.schemaVersion !== 1 ||
+            marker.owner !== "psd-piece-print-batch" ||
+            marker.runId !== scope.runId ||
+            marker.taskFingerprint !== scope.taskFingerprint ||
+            marker.attemptId !== scope.attemptId
+          ) {
+            throw new Error(`无法证明所有权标记属于当前执行：${location}`);
+          }
+        }
+        await this.options.storage.removeFile(location);
+        sidecars?.delete(location);
+        scope.temporaryLocations = scope.temporaryLocations.filter((candidate) => candidate !== location);
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : `无法清理 ${location}`);
+      }
+    }
+    if (!locations || locations.size === 0) this.ownedStaging.delete(scope.scopeId);
+    if (!sidecars || sidecars.size === 0) this.ownedSidecars.delete(scope.scopeId);
     if (errors.length > 0) throw new Error(`输出暂存清理失败：${errors.join("；")}`);
+  }
+
+  async reconcileCommittedOutput(input: {
+    runId: string;
+    groupName: string;
+    taskFingerprint: string;
+  }): Promise<CommitReconciliation> {
+    assertSafeSegment(input.runId, "运行编号");
+    assertSafeSegment(input.groupName, "素材组名称");
+    const finalLocation = joinLocation(joinLocation(this.options.outputRoot, input.runId), input.groupName);
+    if (!(await this.options.storage.exists(finalLocation))) return { status: "missing" };
+    const reportLocation = joinLocation(finalLocation, "result.json");
+    if (!(await this.options.storage.exists(reportLocation))) {
+      return { status: "conflict", message: "最终输出目录存在，但缺少 result.json" };
+    }
+    try {
+      const report = JSON.parse(new TextDecoder().decode(await this.options.storage.readFile(reportLocation))) as {
+        status?: unknown;
+        runId?: unknown;
+        groupName?: unknown;
+        taskFingerprint?: unknown;
+        outputs?: Array<{ artifact?: OutputArtifact }>;
+      };
+      if (
+        report.status !== "verified" ||
+        report.runId !== input.runId ||
+        report.groupName !== input.groupName ||
+        report.taskFingerprint !== input.taskFingerprint ||
+        !Array.isArray(report.outputs) ||
+        report.outputs.some((item) => !item.artifact)
+      ) {
+        return { status: "conflict", message: "最终输出质量报告与中断任务不匹配" };
+      }
+      const artifacts = report.outputs.map((item) => ({ ...(item.artifact as OutputArtifact) }));
+      if (artifacts.some((artifact) =>
+        typeof artifact.name !== "string" ||
+        typeof artifact.kind !== "string" ||
+        typeof artifact.fingerprint !== "string" ||
+        !Number.isSafeInteger(artifact.byteLength) ||
+        artifact.byteLength < 0
+      )) {
+        return { status: "conflict", message: "最终输出质量报告中的文件记录无效" };
+      }
+      for (const artifact of artifacts) assertSafeSegment(artifact.name, "质量报告文件名");
+      const finalNames = (await this.options.storage.listFiles(finalLocation))
+        .filter((name) => name.toLowerCase() !== OWNERSHIP_FILE_NAME);
+      if (!sameNames(finalNames, [...artifacts.map((item) => item.name), "result.json"])) {
+        return { status: "conflict", message: "最终输出文件清单与质量报告不一致" };
+      }
+      for (const artifact of artifacts) {
+        const bytes = await this.options.storage.readFile(joinLocation(finalLocation, artifact.name));
+        if (bytes.byteLength !== artifact.byteLength || fingerprintBytes(bytes) !== artifact.fingerprint) {
+          return { status: "conflict", message: `最终输出文件与质量报告不一致：${artifact.name}` };
+        }
+      }
+      const reportBytes = await this.options.storage.readFile(reportLocation);
+      artifacts.push({
+        name: "result.json",
+        kind: "report",
+        fingerprint: fingerprintBytes(reportBytes),
+        byteLength: reportBytes.byteLength,
+      });
+      return { status: "completed", output: { location: finalLocation, artifacts } };
+    } catch (error) {
+      return {
+        status: "conflict",
+        message: error instanceof Error ? `最终输出质量报告无法读取：${error.message}` : "最终输出质量报告无法读取",
+      };
+    }
+  }
+
+  async cleanupOwnedTemporary(input: {
+    runId: string;
+    groupName: string;
+    taskFingerprint: string;
+    attemptId: string;
+  }): Promise<"cleaned" | "missing" | "preserved"> {
+    assertSafeSegment(input.runId, "运行编号");
+    assertSafeSegment(input.groupName, "素材组名称");
+    const runLocation = joinLocation(this.options.outputRoot, input.runId);
+    const stagingLocation = joinLocation(
+      runLocation,
+      `.staging-${fingerprintValue({
+        runId: input.runId,
+        groupName: input.groupName,
+        attemptId: input.attemptId,
+      }).slice(0, 16)}`,
+    );
+    const stagingOwnershipLocation = joinLocation(stagingLocation, OWNERSHIP_FILE_NAME);
+    const finalOwnershipLocation = joinLocation(joinLocation(runLocation, input.groupName), OWNERSHIP_FILE_NAME);
+    const stagingExists = await this.options.storage.exists(stagingLocation);
+    const stagingMarkerExists = await this.options.storage.exists(stagingOwnershipLocation);
+    const finalMarkerExists = await this.options.storage.exists(finalOwnershipLocation);
+    if ((stagingExists && !stagingMarkerExists) || (stagingMarkerExists && finalMarkerExists)) return "preserved";
+    const markerLocation = stagingMarkerExists
+      ? stagingOwnershipLocation
+      : finalMarkerExists
+        ? finalOwnershipLocation
+        : undefined;
+    if (!markerLocation) return stagingExists ? "preserved" : "missing";
+    let markerMatches = false;
+    try {
+      const marker = JSON.parse(
+        new TextDecoder().decode(await this.options.storage.readFile(markerLocation)),
+      ) as OwnershipMarker;
+      markerMatches = (
+        marker.schemaVersion !== 1 ||
+        marker.owner !== "psd-piece-print-batch" ||
+        marker.runId !== input.runId ||
+        marker.groupName !== input.groupName ||
+        marker.taskFingerprint !== input.taskFingerprint ||
+        marker.attemptId !== input.attemptId ||
+        marker.stagingLocation !== stagingLocation
+      ) === false;
+    } catch {
+      return "preserved";
+    }
+    if (!markerMatches) return "preserved";
+    if (markerLocation === stagingOwnershipLocation) {
+      if (!stagingExists) return "preserved";
+      await this.options.storage.removeDirectory(stagingLocation);
+    } else {
+      await this.options.storage.removeFile(finalOwnershipLocation);
+    }
+    return "cleaned";
   }
 }

@@ -1,6 +1,7 @@
 import type { ArtworkAssignment, ArtworkEntry, FitRule, InputGroupSnapshot, TemplateConfig } from "../domain/types";
 import { resolveScannedInputFile } from "./uxp-input-scanner";
 import { OperationCancelledError } from "../workflow/cancellation";
+import { BatchStoppingError, ResourceCleanupError, WorkflowFailure } from "../workflow/failures";
 import type {
   CancellationToken,
   CommittedOutput,
@@ -102,7 +103,14 @@ export interface SourceResolver {
 }
 
 export interface PhotoshopOutputPort {
-  preflight(runId: string, template: TemplateConfig, group: InputGroupSnapshot, pluginVersion: string): Promise<void>;
+  preflight(
+    runId: string,
+    template: TemplateConfig,
+    group: InputGroupSnapshot,
+    pluginVersion: string,
+    attemptId: string,
+    taskFingerprint: string,
+  ): Promise<void>;
   exportOutputs(
     scope: ExecutionScope,
     template: TemplateConfig,
@@ -142,9 +150,9 @@ interface ResolvedTemplateState {
   structureSignature: string;
 }
 
-export class PhotoshopCapabilityError extends Error {
+export class PhotoshopCapabilityError extends BatchStoppingError {
   constructor(message: string) {
-    super(message);
+    super("photoshop-capability-unavailable", message);
     this.name = "PhotoshopCapabilityError";
   }
 }
@@ -405,11 +413,13 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
     template: TemplateConfig,
     group: InputGroupSnapshot,
     pluginVersion: string,
+    attemptId: string,
+    taskFingerprint: string,
     cancellation: CancellationToken,
   ): Promise<void> {
     this.assertCapability();
     ensureNotCancelled(cancellation);
-    await this.outputPort.preflight(runId, template, group, pluginVersion);
+    await this.outputPort.preflight(runId, template, group, pluginVersion, attemptId, taskFingerprint);
   }
 
   private async selectLayer(documentId: number, layerId: number): Promise<void> {
@@ -484,11 +494,13 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
     };
   }
 
-  createScope(runId: string): ExecutionScope {
+  createScope(runId: string, attemptId = "direct-attempt", taskFingerprint = "unavailable"): ExecutionScope {
     this.sequence += 1;
     return {
       scopeId: `${runId}-photoshop-${this.sequence}`,
       runId,
+      attemptId,
+      taskFingerprint,
       documents: { contentDocumentIds: [] },
       temporaryLocations: [],
     };
@@ -501,22 +513,30 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
   ): Promise<void> {
     this.assertCapability();
     ensureNotCancelled(cancellation);
-    const masterFile = await this.masterResolver.resolve(template.masterSourceRef, template.masterFingerprint);
-    await this.modal("创建母版工作副本", async (context) => {
-      ensureModalNotCancelled(context, cancellation);
-      const before = new Set(this.runtime.app.documents.map((document) => document.id));
-      const master = await this.runtime.app.open(masterFile);
-      if (before.has(master.id)) throw new Error("母版已经由用户打开，无法确认文档所有权，请先关闭后重试");
-      scope.documents.masterDocumentId = master.id;
-      await context.hostControl.registerAutoCloseDocument(master.id);
-      if (!master.duplicate) throw new Error("当前 Photoshop 不支持复制未合并文档");
-      const workCopy = await master.duplicate(`${template.templateId}-${scope.runId}`, false);
-      scope.documents.workCopyDocumentId = workCopy.id;
-      await context.hostControl.registerAutoCloseDocument(workCopy.id);
-      assertDocumentSpec(workCopy, template);
-      await closeDocument(master);
-      await context.hostControl.unregisterAutoCloseDocument(workCopy.id);
-    });
+    try {
+      const masterFile = await this.masterResolver.resolve(template.masterSourceRef, template.masterFingerprint);
+      await this.modal("创建母版工作副本", async (context) => {
+        ensureModalNotCancelled(context, cancellation);
+        const before = new Set(this.runtime.app.documents.map((document) => document.id));
+        const master = await this.runtime.app.open(masterFile);
+        if (before.has(master.id)) throw new Error("母版已经由用户打开，无法确认文档所有权，请先关闭后重试");
+        scope.documents.masterDocumentId = master.id;
+        await context.hostControl.registerAutoCloseDocument(master.id);
+        if (!master.duplicate) throw new Error("当前 Photoshop 不支持复制未合并文档");
+        const workCopy = await master.duplicate(`${template.templateId}-${scope.runId}`, false);
+        scope.documents.workCopyDocumentId = workCopy.id;
+        await context.hostControl.registerAutoCloseDocument(workCopy.id);
+        assertDocumentSpec(workCopy, template);
+        await closeDocument(master);
+        await context.hostControl.unregisterAutoCloseDocument(workCopy.id);
+      });
+    } catch (error) {
+      if (error instanceof OperationCancelledError || error instanceof WorkflowFailure) throw error;
+      throw new BatchStoppingError(
+        "master-work-copy-failed",
+        error instanceof Error ? `无法从登记母版创建工作副本：${error.message}` : "无法从登记母版创建工作副本",
+      );
+    }
   }
 
   async resolveTemplate(
@@ -733,6 +753,7 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
 
   async cleanup(scope: ExecutionScope): Promise<void> {
     const errors: string[] = [];
+    let requiresManualReview = false;
     try {
       await this.outputPort.cleanup(scope);
     } catch (error) {
@@ -753,6 +774,7 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
             await closeDocument(document);
           } catch (error) {
             failedIds.push(documentId!);
+            requiresManualReview = true;
             errors.push(
               `关闭 ${document.name} 失败：${error instanceof Error ? error.message : "未知错误"}`,
             );
@@ -769,12 +791,13 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
         }
       });
     } catch (error) {
+      requiresManualReview = true;
       errors.push(error instanceof Error ? error.message : "Photoshop 临时文档清理失败");
     }
     if (errors.length === 0) {
       this.resolvedScopes.delete(scope.scopeId);
       scope.temporaryLocations.length = 0;
     }
-    if (errors.length > 0) throw new Error(errors.join("；"));
+    if (errors.length > 0) throw new ResourceCleanupError(errors.join("；"), requiresManualReview);
   }
 }

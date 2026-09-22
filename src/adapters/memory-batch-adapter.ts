@@ -94,16 +94,20 @@ export class MemoryBatchAdapter implements GroupExecutionAdapter {
     _template: TemplateConfig,
     _group: InputGroupSnapshot,
     _pluginVersion: string,
+    _attemptId: string,
+    _taskFingerprint: string,
     cancellation: CancellationToken,
   ): Promise<void> {
     this.ensureNotCancelled(cancellation);
   }
 
-  createScope(runId: string): ExecutionScope {
+  createScope(runId: string, attemptId: string, taskFingerprint: string): ExecutionScope {
     this.sequence += 1;
     const scope: MemoryScope = {
       scopeId: `${runId}-scope-${this.sequence}`,
       runId,
+      attemptId,
+      taskFingerprint,
       documents: { contentDocumentIds: [] },
       temporaryLocations: [],
       resolved: false,
@@ -216,6 +220,7 @@ export class MemoryBatchAdapter implements GroupExecutionAdapter {
     ];
     const output = {
       temporaryLocation,
+      ownershipLocation: `${temporaryLocation}.owner.json`,
       finalLocation: `runs/${scope.runId}/${group.name}`,
       groupName: group.name,
       capabilityProfileId: template.output.capabilityProfileId,

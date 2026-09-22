@@ -7,6 +7,7 @@ import type {
   OutputRenderProfile,
   TemplateConfig,
 } from "../domain/types";
+import type { FailureDetails } from "./failures";
 
 export type RunStage =
   | "preflight"
@@ -42,6 +43,8 @@ export interface ModalDocumentControl {
 export interface ExecutionScope {
   scopeId: string;
   runId: string;
+  attemptId: string;
+  taskFingerprint: string;
   documents: OwnedDocuments;
   temporaryLocations: string[];
 }
@@ -80,6 +83,7 @@ export interface OutputArtifactExpectation {
 
 export interface DraftOutput {
   temporaryLocation: string;
+  ownershipLocation?: string;
   finalLocation: string;
   groupName: string;
   capabilityProfileId: string;
@@ -100,6 +104,7 @@ export interface OutputAuditContext {
 
 export interface VerifiedOutput {
   temporaryLocation: string;
+  ownershipLocation?: string;
   finalLocation: string;
   groupName: string;
   capabilityProfileId: string;
@@ -118,9 +123,11 @@ export interface GroupExecutionAdapter {
     template: TemplateConfig,
     group: InputGroupSnapshot,
     pluginVersion: string,
+    attemptId: string,
+    taskFingerprint: string,
     cancellation: CancellationToken,
   ): Promise<void>;
-  createScope(runId: string): ExecutionScope;
+  createScope(runId: string, attemptId: string, taskFingerprint: string): ExecutionScope;
   createWorkCopy(scope: ExecutionScope, template: TemplateConfig, cancellation: CancellationToken): Promise<void>;
   resolveTemplate(scope: ExecutionScope, template: TemplateConfig, cancellation: CancellationToken): Promise<void>;
   replaceArtwork(scope: ExecutionScope, assignments: ArtworkAssignment[], cancellation: CancellationToken): Promise<void>;
@@ -151,6 +158,7 @@ export interface GroupRunRequest {
   pluginVersion: string;
   template: TemplateConfig;
   group: InputGroupSnapshot;
+  attemptId?: string;
 }
 
 export interface GroupRunResult {
@@ -163,7 +171,9 @@ export interface GroupRunResult {
   finishedAt: string;
   output?: CommittedOutput;
   error?: string;
+  failure?: FailureDetails;
   cleanupWarning?: string;
+  cleanupRequiresReview?: boolean;
   events: StageEvent[];
 }
 

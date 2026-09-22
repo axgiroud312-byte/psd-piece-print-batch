@@ -149,6 +149,7 @@ export function createTaskFingerprint(
   group: InputGroupSnapshot,
   pluginVersion: string,
 ): string {
+  const { masterSourceRef: _ephemeralMasterSourceRef, ...stableTemplate } = template;
   const expectedKeys = new Set(template.artworkEntries.map((entry) => entry.inputKey.toLowerCase()));
   const files = group.files.filter((file) => {
     const base = file.name.replace(/\\/g, "/").split("/").pop() ?? file.name;
@@ -169,7 +170,7 @@ export function createTaskFingerprint(
   return fingerprintValue({
     pluginVersion,
     template: {
-      ...template,
+      ...stableTemplate,
       garmentPieces: [...template.garmentPieces].sort((left, right) => compareCodeUnits(left.id, right.id)),
       artworkEntries: [...template.artworkEntries].sort((left, right) => compareCodeUnits(left.id, right.id)),
       instances: [...template.instances].sort((left, right) => compareCodeUnits(left.id, right.id)),

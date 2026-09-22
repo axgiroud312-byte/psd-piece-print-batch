@@ -233,6 +233,10 @@ describe("UXP input scanner", () => {
     const second = (await scanInputFolder(makeRoot(secondFile) as never, "binary"))[0].files[0];
 
     await expect(resolveScannedInputFile(first.sourceRef!, first.fingerprint!)).rejects.toThrow("来源引用已失效");
+    await expect(resolveScannedInputFile(first.sourceRef!, first.fingerprint!)).rejects.toMatchObject({
+      code: "input-access-expired",
+      disposition: "batch",
+    });
     await expect(resolveScannedInputFile(second.sourceRef!, second.fingerprint!)).resolves.toBe(secondFile);
   });
 
@@ -262,5 +266,36 @@ describe("UXP input scanner", () => {
     await expect(resolveScannedInputFile(snapshot.sourceRef!, snapshot.fingerprint!)).rejects.toThrow(
       "预检后发生变化",
     );
+    await expect(resolveScannedInputFile(snapshot.sourceRef!, snapshot.fingerprint!)).rejects.toMatchObject({
+      code: "input-content-changed",
+      disposition: "group",
+    });
+  });
+
+  it("keeps an individual unreadable artwork file scoped to its group", async () => {
+    const file = {
+      name: "front.png",
+      isFile: true,
+      isFolder: false,
+      read: async () => png(10, 10),
+    };
+    const root = {
+      name: "输入",
+      isFile: false,
+      isFolder: true,
+      getEntries: async () => [{
+        name: "款式001",
+        isFile: false,
+        isFolder: true,
+        getEntries: async () => [file],
+      }],
+    };
+    const snapshot = (await scanInputFolder(root as never, "binary"))[0].files[0];
+    file.read = async () => { throw new Error("file locked"); };
+
+    await expect(resolveScannedInputFile(snapshot.sourceRef!, snapshot.fingerprint!)).rejects.toMatchObject({
+      code: "input-file-read-failed",
+      disposition: "group",
+    });
   });
 });

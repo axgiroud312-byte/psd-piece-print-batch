@@ -260,6 +260,31 @@ describe("Photoshop adapter", () => {
     ).rejects.toBeInstanceOf(PhotoshopCapabilityError);
   });
 
+  it("classifies an unavailable registered master as a batch-stopping failure", async () => {
+    const { template, group } = singleEntryFixture();
+    const fake = createFakeRuntime();
+    const adapter = new PhotoshopBatchAdapter({
+      capability: {
+        m0Validated: true,
+        smartObjectEditingValidated: true,
+        validatedPhotoshopVersion: "25.0.0",
+      },
+      masterResolver: { resolve: async () => { throw new Error("master grant expired"); } },
+      outputPort: outputPort(),
+      runtime: fake.runtime as never,
+    });
+
+    const result = await runSingleGroup(
+      { runId: "master-expired", pluginVersion: "0.1.0", template, group },
+      adapter,
+    );
+    expect(result.failure).toMatchObject({
+      code: "master-work-copy-failed",
+      disposition: "batch",
+    });
+    expect(fake.runtime.app.open).not.toHaveBeenCalled();
+  });
+
   it("runs the guarded smart-object path inside modal execution and closes only owned documents", async () => {
     const { template, group } = singleEntryFixture();
     const fake = createFakeRuntime();
@@ -471,7 +496,10 @@ describe("Photoshop adapter", () => {
     scope.documents.workCopyDocumentId = fake.workDocument.id;
     scope.documents.contentDocumentIds.push(content.id);
 
-    await expect(adapter.cleanup(scope)).rejects.toThrow("文档忙");
+    await expect(adapter.cleanup(scope)).rejects.toMatchObject({
+      message: expect.stringContaining("文档忙"),
+      requiresManualReview: true,
+    });
 
     expect(content.closeWithoutSaving).toHaveBeenCalledOnce();
     expect(fake.workDocument.closeWithoutSaving).toHaveBeenCalledOnce();

@@ -1,5 +1,6 @@
 import type { InputFileSnapshot, InputGroupSnapshot } from "../domain/types";
 import { fingerprintBytes } from "../workflow/fingerprint";
+import { BatchStoppingError, GroupOperationError } from "../workflow/failures";
 
 interface UxpEntry {
   name: string;
@@ -209,12 +210,24 @@ export async function scanInputFolder(
 
 export async function resolveScannedInputFile(sourceRef: string, expectedFingerprint: string): Promise<unknown> {
   const source = scannedSources.get(sourceRef);
-  if (!source) throw new Error("素材来源引用已失效，请重新扫描素材目录");
-  if (source.fingerprint !== expectedFingerprint) throw new Error("素材内容指纹与扫描记录不一致");
-  const data = await source.file.read({ format: source.binaryFormat });
-  if (!(data instanceof ArrayBuffer)) throw new Error("重新读取素材时未获得二进制内容");
+  if (!source) throw new BatchStoppingError("input-access-expired", "素材来源引用已失效，请重新扫描素材目录");
+  if (source.fingerprint !== expectedFingerprint) {
+    throw new GroupOperationError("input-snapshot-invalid", "素材内容指纹与扫描记录不一致");
+  }
+  let data: ArrayBuffer | string;
+  try {
+    data = await source.file.read({ format: source.binaryFormat });
+  } catch (error) {
+    throw new GroupOperationError(
+      "input-file-read-failed",
+      error instanceof Error ? `重新读取素材失败：${error.message}` : "重新读取素材失败",
+    );
+  }
+  if (!(data instanceof ArrayBuffer)) {
+    throw new GroupOperationError("input-file-read-failed", "重新读取素材时未获得二进制内容");
+  }
   if (fingerprintBytes(new Uint8Array(data)) !== expectedFingerprint) {
-    throw new Error("素材在预检后发生变化，请重新扫描素材目录");
+    throw new GroupOperationError("input-content-changed", "素材在预检后发生变化，请重新扫描素材目录");
   }
   return source.file;
 }

@@ -3,6 +3,7 @@ import type { ModalDocumentControl, OutputArtifactMetadata } from "../workflow/t
 import type { FixedRegionRenderer } from "./fixed-region-output-port";
 import { assertBatchPlayResults } from "./photoshop-batch-adapter";
 import { UxpOutputStorage, type UxpOutputFile } from "./uxp-output-storage";
+import { BatchStoppingError, WorkflowFailure } from "../workflow/failures";
 
 interface RenderLayer {
   id: number;
@@ -271,14 +272,24 @@ export class PhotoshopFixedRegionRenderer implements FixedRegionRenderer {
       }
       const entry = await this.storage.fileEntry(destination, true);
       const embedColorProfile = target.profile.icc.mode === "embed";
-      if (target.profile.format === "png") {
-        await output.saveAs.png(entry, { compression: 6 }, true);
-      } else if (target.profile.format === "jpeg") {
-        await output.saveAs.jpg(entry, { quality: 12, embedColorProfile }, true);
-      } else if (target.profile.format === "psd") {
-        await output.saveAs.psd(entry, { embedColorProfile, maximizeCompatibility: true }, true);
-      } else {
-        await output.saveAs.psb(entry, { embedColorProfile, maximizeCompatibility: true }, true);
+      try {
+        if (target.profile.format === "png") {
+          await output.saveAs.png(entry, { compression: 6 }, true);
+        } else if (target.profile.format === "jpeg") {
+          await output.saveAs.jpg(entry, { quality: 12, embedColorProfile }, true);
+        } else if (target.profile.format === "psd") {
+          await output.saveAs.psd(entry, { embedColorProfile, maximizeCompatibility: true }, true);
+        } else {
+          await output.saveAs.psb(entry, { embedColorProfile, maximizeCompatibility: true }, true);
+        }
+      } catch (error) {
+        if (error instanceof WorkflowFailure) throw error;
+        const cancellation = error as { number?: number; message?: string };
+        if (cancellation.number === -128 || /cancelled|canceled|取消/i.test(cancellation.message ?? "")) throw error;
+        throw new BatchStoppingError(
+          "photoshop-output-save-failed",
+          error instanceof Error ? `Photoshop 保存 ${target.fileName} 失败：${error.message}` : `Photoshop 保存 ${target.fileName} 失败`,
+        );
       }
     });
   }

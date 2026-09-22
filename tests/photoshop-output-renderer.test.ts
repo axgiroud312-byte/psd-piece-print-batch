@@ -252,4 +252,32 @@ describe("Photoshop fixed-region renderer", () => {
       renderer.render(10, samplePreflightPayload.template.output.preview, "preview", "output.jpg"),
     ).rejects.toThrow("自动关闭保护");
   });
+
+  it("classifies Photoshop output save failures as batch-stopping I/O failures", async () => {
+    const source = document(50, "工作副本.psd");
+    const output = document(51, "输出副本.psd");
+    output.saveAs.jpg.mockRejectedValue(new Error("disk full"));
+    source.duplicate.mockResolvedValue(output);
+    const storage = {
+      fileEntry: vi.fn(async () => ({ name: "预览.jpg", isFile: true })),
+    } as unknown as UxpOutputStorage;
+    const renderer = new PhotoshopFixedRegionRenderer(storage, {
+      documents: [source as never],
+      open: vi.fn(),
+      hasAlpha: vi.fn(),
+      createSolidBackground: vi.fn(async () => {}),
+    });
+
+    await expect(renderer.render(
+      source.id,
+      samplePreflightPayload.template.output.preview,
+      "preview",
+      "C:/输出/run/staging/预览.jpg",
+      control(),
+    )).rejects.toMatchObject({
+      code: "photoshop-output-save-failed",
+      disposition: "batch",
+    });
+    expect(output.closeWithoutSaving).toHaveBeenCalledOnce();
+  });
 });

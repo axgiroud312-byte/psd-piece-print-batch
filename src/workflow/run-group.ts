@@ -1,6 +1,7 @@
 import { preflightGroups } from "../domain/preflight";
 import { OperationCancelledError, RunCancellation } from "./cancellation";
-import { createTaskFingerprint } from "./fingerprint";
+import { createTaskFingerprint, fingerprintValue } from "./fingerprint";
+import { failureDetails, ResourceCleanupError } from "./failures";
 import type {
   ExecutionScope,
   GroupExecutionAdapter,
@@ -32,7 +33,9 @@ export async function runSingleGroup(
   let output: GroupRunResult["output"];
   let status: GroupRunResult["status"] = "failed";
   let failure: string | undefined;
+  let structuredFailure: GroupRunResult["failure"];
   let cleanupWarning: string | undefined;
+  let cleanupRequiresReview: boolean | undefined;
 
   const emit = (stage: RunStage, state: StageEvent["state"], message: string): void => {
     const event = { stage, state, message, at: now() };
@@ -81,10 +84,23 @@ export async function runSingleGroup(
         .join("；");
       throw new Error(messages || "素材组预检未通过");
     }
-    await adapter.preflightOutput(request.runId, request.template, request.group, request.pluginVersion, cancellation);
-    emit("preflight", "completed", "素材组和输出目标预检通过");
     taskFingerprint = createTaskFingerprint(request.template, request.group, request.pluginVersion);
-    scope = adapter.createScope(request.runId);
+    const attemptId = request.attemptId ?? fingerprintValue({
+      runId: request.runId,
+      groupName: request.group.name,
+      taskFingerprint,
+    });
+    await adapter.preflightOutput(
+      request.runId,
+      request.template,
+      request.group,
+      request.pluginVersion,
+      attemptId,
+      taskFingerprint,
+      cancellation,
+    );
+    emit("preflight", "completed", "素材组和输出目标预检通过");
+    scope = adapter.createScope(request.runId, attemptId, taskFingerprint);
 
     await execute("copy-master", "创建干净母版工作副本", () =>
       adapter.createWorkCopy(scope!, request.template, cancellation),
@@ -115,7 +131,8 @@ export async function runSingleGroup(
       failure = error.message;
     } else {
       status = "failed";
-      failure = errorMessage(error);
+      structuredFailure = failureDetails(error);
+      failure = structuredFailure.message;
       if (lastStage === "preflight") emit("preflight", "failed", failure);
     }
   } finally {
@@ -127,6 +144,7 @@ export async function runSingleGroup(
         emit("cleanup", "completed", "临时资源清理完成");
       } catch (error) {
         cleanupWarning = errorMessage(error);
+        cleanupRequiresReview = !(error instanceof ResourceCleanupError) || error.requiresManualReview;
         emit("cleanup", "failed", cleanupWarning);
       }
     }
@@ -142,7 +160,9 @@ export async function runSingleGroup(
     finishedAt: now(),
     output,
     error: failure,
+    failure: structuredFailure,
     cleanupWarning,
+    cleanupRequiresReview,
     events,
   };
 }

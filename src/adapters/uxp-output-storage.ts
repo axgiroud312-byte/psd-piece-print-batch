@@ -1,4 +1,5 @@
 import type { OutputStorage } from "./fixed-region-output-port";
+import { BatchStoppingError, WorkflowFailure } from "../workflow/failures";
 
 export interface UxpOutputEntry {
   name: string;
@@ -47,6 +48,16 @@ export class UxpOutputStorage implements OutputStorage {
     this.rootLocation = options.rootLocation.replace(/\\/g, "/").replace(/\/+$/, "");
   }
 
+  private async operation<T>(code: string, message: string, callback: () => Promise<T>): Promise<T> {
+    try {
+      return await callback();
+    } catch (error) {
+      if (error instanceof WorkflowFailure) throw error;
+      const detail = error instanceof Error ? `：${error.message}` : "";
+      throw new BatchStoppingError(code, `${message}${detail}`);
+    }
+  }
+
   private parts(location: string): string[] {
     const normalized = location.replace(/\\/g, "/").replace(/\/+$/, "");
     if (normalized === this.rootLocation) return [];
@@ -56,7 +67,8 @@ export class UxpOutputStorage implements OutputStorage {
 
   private async child(folder: UxpOutputFolder, name: string): Promise<UxpOutputEntry | undefined> {
     const normalized = name.toLowerCase();
-    return (await folder.getEntries()).find((entry) => entry.name.toLowerCase() === normalized);
+    return (await this.operation("output-directory-read-failed", "无法读取输出目录", () => folder.getEntries()))
+      .find((entry) => entry.name.toLowerCase() === normalized);
   }
 
   private async entry(location: string): Promise<UxpOutputEntry | undefined> {
@@ -72,7 +84,7 @@ export class UxpOutputStorage implements OutputStorage {
 
   private async folder(location: string): Promise<UxpOutputFolder> {
     const entry = await this.entry(location);
-    if (!entry?.isFolder) throw new Error(`输出目录不存在：${location}`);
+    if (!entry?.isFolder) throw new BatchStoppingError("output-directory-missing", `输出目录不存在：${location}`);
     return entry as UxpOutputFolder;
   }
 
@@ -83,7 +95,10 @@ export class UxpOutputStorage implements OutputStorage {
       return existing as UxpOutputFile;
     }
     if (!create) throw new Error(`输出文件不存在：${location}`);
-    return (await this.folder(parentLocation(location))).createFile(baseName(location), { overwrite: false });
+    const parent = await this.folder(parentLocation(location));
+    return this.operation("output-file-create-failed", `无法创建输出文件 ${location}`, () =>
+      parent.createFile(baseName(location), { overwrite: false }),
+    );
   }
 
   async exists(location: string): Promise<boolean> {
@@ -99,10 +114,14 @@ export class UxpOutputStorage implements OutputStorage {
       const next = await this.child(writable, part);
       if (next) {
         if (index === parts.length - 1) throw new Error(`待创建的输出目录已存在：${location}`);
-        if (!next.isFolder) throw new Error(`输出父路径被文件占用：${location}`);
+        if (!next.isFolder) {
+          throw new BatchStoppingError("output-parent-path-invalid", `输出父路径被文件占用：${location}`);
+        }
         writable = next as UxpOutputFolder;
       } else {
-        writable = await writable.createFolder(part);
+        writable = await this.operation("output-directory-create-failed", `无法创建输出目录 ${location}`, () =>
+          writable.createFolder(part),
+        );
         created.push(writable);
       }
     }
@@ -113,13 +132,20 @@ export class UxpOutputStorage implements OutputStorage {
     } while (await this.child(writable, probeName));
     let probe: UxpOutputFile | undefined;
     try {
-      probe = await writable.createFile(probeName, { overwrite: false });
-      await probe.write(arrayBuffer(Uint8Array.of(0)), { format: this.options.binaryFormat });
+      probe = await this.operation("output-write-probe-failed", "输出目录写入探测失败", () =>
+        writable.createFile(probeName, { overwrite: false }),
+      );
+      const written = await this.operation("output-write-probe-failed", "输出目录写入探测失败", () =>
+        probe!.write(arrayBuffer(Uint8Array.of(0)), { format: this.options.binaryFormat }),
+      );
+      if (written !== 1) throw new BatchStoppingError("output-write-probe-failed", "输出目录写入探测不完整");
     } finally {
       try {
-        if (probe) await probe.delete();
+        if (probe) await this.operation("output-write-probe-cleanup-failed", "无法清理输出写入探测文件", () => probe!.delete());
       } finally {
-        for (const folder of created.reverse()) await folder.delete();
+        for (const folder of created.reverse()) {
+          await this.operation("output-write-probe-cleanup-failed", "无法清理输出写入探测目录", () => folder.delete());
+        }
       }
     }
   }
@@ -129,10 +155,14 @@ export class UxpOutputStorage implements OutputStorage {
     for (const part of this.parts(location)) {
       const existing = await this.child(current, part);
       if (existing) {
-        if (!existing.isFolder) throw new Error(`输出目录路径被文件占用：${location}`);
+        if (!existing.isFolder) {
+          throw new BatchStoppingError("output-parent-path-invalid", `输出目录路径被文件占用：${location}`);
+        }
         current = existing as UxpOutputFolder;
       } else {
-        current = await current.createFolder(part);
+        current = await this.operation("output-directory-create-failed", `无法创建输出目录 ${location}`, () =>
+          current.createFolder(part),
+        );
       }
     }
   }
@@ -141,7 +171,7 @@ export class UxpOutputStorage implements OutputStorage {
     const parent = await this.folder(parentLocation(location));
     const name = baseName(location);
     if (await this.child(parent, name)) throw new Error(`输出目录已存在：${location}`);
-    await parent.createFolder(name);
+    await this.operation("output-directory-create-failed", `无法创建输出目录 ${location}`, () => parent.createFolder(name));
   }
 
   async writeFile(location: string, bytes: Uint8Array): Promise<void> {
@@ -149,18 +179,37 @@ export class UxpOutputStorage implements OutputStorage {
     const name = baseName(location);
     const existing = await this.child(parent, name);
     if (existing && !existing.isFile) throw new Error(`输出文件路径被目录占用：${location}`);
-    const file = await parent.createFile(name, { overwrite: true });
-    await file.write(arrayBuffer(bytes), { format: this.options.binaryFormat });
+    const file = await this.operation("output-file-create-failed", `无法创建输出文件 ${location}`, () =>
+      parent.createFile(name, { overwrite: true }),
+    );
+    const written = await this.operation("output-file-write-failed", `无法写入输出文件 ${location}`, () =>
+      file.write(arrayBuffer(bytes), { format: this.options.binaryFormat }),
+    );
+    if (written !== bytes.byteLength) {
+      throw new BatchStoppingError("output-file-write-failed", `输出文件写入不完整：${location}`);
+    }
   }
 
   async readFile(location: string): Promise<Uint8Array> {
-    const result = await (await this.fileEntry(location)).read({ format: this.options.binaryFormat });
+    const file = await this.fileEntry(location);
+    const result = await this.operation("output-file-read-failed", `无法读取输出文件 ${location}`, () =>
+      file.read({ format: this.options.binaryFormat }),
+    );
     if (!(result instanceof ArrayBuffer)) throw new Error(`输出文件无法按二进制读取：${location}`);
     return new Uint8Array(result);
   }
 
+  async removeFile(location: string): Promise<void> {
+    const entry = await this.entry(location);
+    if (!entry) return;
+    if (!entry.isFile) throw new Error(`拒绝按文件清理目录：${location}`);
+    await this.operation("output-file-delete-failed", `无法删除输出文件 ${location}`, () => entry.delete());
+  }
+
   async listFiles(location: string): Promise<string[]> {
-    return (await (await this.folder(location)).getEntries()).map((entry) => entry.name);
+    const folder = await this.folder(location);
+    return (await this.operation("output-directory-read-failed", `无法读取输出目录 ${location}`, () => folder.getEntries()))
+      .map((entry) => entry.name);
   }
 
   async promoteDirectoryExclusive(temporaryLocation: string, finalLocation: string): Promise<void> {
@@ -171,14 +220,19 @@ export class UxpOutputStorage implements OutputStorage {
     if (await this.child(parent, baseName(finalLocation))) throw new Error(`输出目录已存在：${finalLocation}`);
     const temporary = await this.entry(temporaryLocation);
     if (!temporary?.isFolder) throw new Error(`暂存目录不存在：${temporaryLocation}`);
-    await temporary.moveTo(parent, { overwrite: false, newName: baseName(finalLocation) });
+    await this.operation("output-directory-promote-failed", "无法原子提交输出目录", () =>
+      temporary.moveTo(parent, { overwrite: false, newName: baseName(finalLocation) }),
+    );
   }
 
   private async deleteTree(entry: UxpOutputEntry): Promise<void> {
     if (entry.isFolder) {
-      for (const child of await (entry as UxpOutputFolder).getEntries()) await this.deleteTree(child);
+      const children = await this.operation("output-directory-read-failed", "无法读取待清理输出目录", () =>
+        (entry as UxpOutputFolder).getEntries(),
+      );
+      for (const child of children) await this.deleteTree(child);
     }
-    await entry.delete();
+    await this.operation("output-cleanup-failed", `无法清理输出项 ${entry.name}`, () => entry.delete());
   }
 
   async removeDirectory(location: string): Promise<void> {

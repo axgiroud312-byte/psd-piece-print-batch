@@ -54,6 +54,10 @@ class MemoryOutputStorage implements OutputStorage {
     return Uint8Array.from(bytes);
   }
 
+  async removeFile(location: string): Promise<void> {
+    this.files.delete(location);
+  }
+
   async listFiles(location: string): Promise<string[]> {
     const prefix = `${location}/`;
     return [...this.files.keys()]
@@ -141,6 +145,8 @@ function scope(): ExecutionScope {
   return {
     scopeId: "scope-001",
     runId: "run-001",
+    attemptId: "attempt-001",
+    taskFingerprint: "task-fingerprint",
     documents: { contentDocumentIds: [] },
     temporaryLocations: [],
   };
@@ -287,6 +293,11 @@ describe("fixed-region output transaction", () => {
     const staging = `C:/输出/run-001/.staging-${fingerprintValue({
       runId: "run-001",
       groupName: samplePreflightPayload.groups[0].name,
+      attemptId: fingerprintValue({
+        runId: "run-001",
+        groupName: samplePreflightPayload.groups[0].name,
+        taskFingerprint: "direct",
+      }),
     }).slice(0, 16)}`;
     storage.directories.add(staging);
     const currentPort = new FixedRegionOutputPort({
@@ -482,7 +493,7 @@ describe("fixed-region output transaction", () => {
     await expect(
       exportOutputs(port, failedScope),
     ).rejects.toThrow("磁盘写入失败");
-    expect(failedScope.temporaryLocations).toHaveLength(1);
+    expect(failedScope.temporaryLocations).toHaveLength(2);
     await port.cleanup(failedScope);
     expect(failedScope.temporaryLocations).toHaveLength(0);
 
@@ -495,5 +506,73 @@ describe("fixed-region output transaction", () => {
     expect(await next.storage.exists(draft.temporaryLocation)).toBe(true);
     expect(await next.storage.exists(draft.finalLocation)).toBe(false);
     await next.port.cleanup(nextScope);
+  });
+
+  it("reconciles a committed result after a crash by matching its quality report", async () => {
+    const { storage, port } = setup();
+    const currentScope = scope();
+    const draft = await exportOutputs(port, currentScope);
+    const verified = await port.verifyOutput(currentScope, draft, currentScope.taskFingerprint);
+    const committed = await port.commitResult(currentScope, verified);
+
+    await expect(port.reconcileCommittedOutput({
+      runId: currentScope.runId,
+      groupName: samplePreflightPayload.groups[0].name,
+      taskFingerprint: currentScope.taskFingerprint,
+    })).resolves.toMatchObject({ status: "completed", output: { location: committed.location } });
+    await expect(port.reconcileCommittedOutput({
+      runId: currentScope.runId,
+      groupName: samplePreflightPayload.groups[0].name,
+      taskFingerprint: "different-task",
+    })).resolves.toMatchObject({ status: "conflict" });
+    await storage.writeFile(`${committed.location}/${verified.artifacts[0].name}`, encoder.encode("changed-after-commit"));
+    await expect(port.reconcileCommittedOutput({
+      runId: currentScope.runId,
+      groupName: samplePreflightPayload.groups[0].name,
+      taskFingerprint: currentScope.taskFingerprint,
+    })).resolves.toMatchObject({ status: "conflict" });
+    const committedOwnership = `${committed.location}/.psd-batch-owner.json`;
+    expect(await storage.exists(draft.ownershipLocation!)).toBe(false);
+    expect(await storage.exists(committedOwnership)).toBe(true);
+
+    await port.cleanup(currentScope);
+    expect(await storage.exists(committedOwnership)).toBe(false);
+  });
+
+  it("cleans restart leftovers only when the sidecar proves exact run ownership", async () => {
+    const { storage, port } = setup();
+    const currentScope = scope();
+    const draft = await exportOutputs(port, currentScope);
+    const recovery = {
+      runId: currentScope.runId,
+      groupName: samplePreflightPayload.groups[0].name,
+      taskFingerprint: currentScope.taskFingerprint,
+      attemptId: currentScope.attemptId,
+    };
+
+    await expect(port.cleanupOwnedTemporary({ ...recovery, taskFingerprint: "not-the-owner" })).resolves.toBe("preserved");
+    expect(await storage.exists(draft.temporaryLocation)).toBe(true);
+    expect(await storage.exists(draft.ownershipLocation!)).toBe(true);
+
+    await expect(port.cleanupOwnedTemporary(recovery)).resolves.toBe("cleaned");
+    expect(await storage.exists(draft.temporaryLocation)).toBe(false);
+    expect(await storage.exists(draft.ownershipLocation!)).toBe(false);
+  });
+
+  it("preserves a replacement directory when its in-directory ownership marker is missing", async () => {
+    const { storage, port } = setup();
+    const currentScope = scope();
+    const draft = await exportOutputs(port, currentScope);
+    await storage.removeDirectory(draft.temporaryLocation);
+    await storage.createExclusiveDirectory(draft.temporaryLocation);
+
+    await expect(port.cleanup(currentScope)).rejects.toThrow("无法证明暂存目录属于当前执行");
+    await expect(port.cleanupOwnedTemporary({
+      runId: currentScope.runId,
+      groupName: samplePreflightPayload.groups[0].name,
+      taskFingerprint: currentScope.taskFingerprint,
+      attemptId: currentScope.attemptId,
+    })).resolves.toBe("preserved");
+    expect(await storage.exists(draft.temporaryLocation)).toBe(true);
   });
 });

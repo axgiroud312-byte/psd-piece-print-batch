@@ -194,6 +194,9 @@ describe("single-group workflow", () => {
   });
 
   it("keeps task identity stable when unchanged files receive new scan-scoped references", () => {
+    const template = structuredClone(samplePreflightPayload.template);
+    const reselectedTemplate = structuredClone(template);
+    reselectedTemplate.masterSourceRef = "new-grant:成品母版.psd";
     const original = structuredClone(samplePreflightPayload.groups[0]);
     const rescanned = structuredClone(original);
     rescanned.files = rescanned.files.map((file) => ({
@@ -201,8 +204,8 @@ describe("single-group workflow", () => {
       sourceRef: `new-scan:${file.sourceRef}`,
     }));
 
-    expect(createTaskFingerprint(samplePreflightPayload.template, rescanned, "0.1.0")).toBe(
-      createTaskFingerprint(samplePreflightPayload.template, original, "0.1.0"),
+    expect(createTaskFingerprint(reselectedTemplate, rescanned, "0.1.0")).toBe(
+      createTaskFingerprint(template, original, "0.1.0"),
     );
   });
 
@@ -231,7 +234,7 @@ describe("single-group workflow", () => {
     group.name = "蓝花-样组";
 
     expect(createTaskFingerprint(template, group, "0.1.0")).toBe(
-      "afc9076fec4e50ac5704df2bbfdc98516c93c12e8b60786575d9df977be298c4",
+      "1b93ff9e015c8543b638ea720bd4baf02dce94ed93b6289eb859fd73c0a7f8d3",
     );
   });
 
