@@ -6,9 +6,16 @@ import {
 } from "../src/adapters/photoshop-fixed-region-renderer";
 import type { UxpOutputStorage } from "../src/adapters/uxp-output-storage";
 import { samplePreflightPayload } from "../src/domain/sample";
-import type { ModalDocumentControl, OutputArtifactMetadata } from "../src/workflow/types";
+import type {
+  ModalDocumentControl,
+  OutputArtifactMetadata,
+} from "../src/workflow/types";
 
-function layer(id: number, name: string, nested: Array<Record<string, any>> = []) {
+function layer(
+  id: number,
+  name: string,
+  nested: Array<Record<string, any>> = [],
+) {
   return { id, name, visible: true, layers: nested };
 }
 
@@ -29,11 +36,19 @@ function document(id: number, name: string) {
     activeLayers: [] as Array<Record<string, any>>,
     guides: [{ delete: vi.fn(async () => {}) }],
     duplicate: vi.fn(),
-    crop: vi.fn(async function (this: { width: number; height: number }, bounds) {
+    crop: vi.fn(async function (
+      this: { width: number; height: number },
+      bounds,
+    ) {
       this.width = bounds.right - bounds.left;
       this.height = bounds.bottom - bounds.top;
     }),
-    resizeImage: vi.fn(async function (this: { resolution: number }, _width, _height, resolution) {
+    resizeImage: vi.fn(async function (
+      this: { resolution: number },
+      _width,
+      _height,
+      resolution,
+    ) {
       this.resolution = resolution;
     }),
     flatten: vi.fn(async () => {}),
@@ -47,7 +62,10 @@ function document(id: number, name: string) {
   };
 }
 
-function control(): ModalDocumentControl & { registered: number[]; unregistered: number[] } {
+function control(): ModalDocumentControl & {
+  registered: number[];
+  unregistered: number[];
+} {
   return {
     registered: [],
     unregistered: [],
@@ -66,7 +84,9 @@ describe("Photoshop fixed-region renderer", () => {
     const output = document(11, "输出副本.psd");
     source.duplicate.mockResolvedValue(output);
     const file = { name: "预览.jpg", isFile: true };
-    const storage = { fileEntry: vi.fn(async () => file) } as unknown as UxpOutputStorage;
+    const storage = {
+      fileEntry: vi.fn(async () => file),
+    } as unknown as UxpOutputStorage;
     const runtime: PhotoshopRenderRuntime = {
       documents: [source as never],
       open: vi.fn(),
@@ -75,19 +95,42 @@ describe("Photoshop fixed-region renderer", () => {
     };
     const renderer = new PhotoshopFixedRegionRenderer(storage, runtime);
     const currentControl = control();
-    const target = structuredClone(samplePreflightPayload.template.output.preview);
+    const target = structuredClone(
+      samplePreflightPayload.template.output.preview,
+    );
 
-    await renderer.render(10, target, "preview", "C:/输出/run/staging/预览.jpg", currentControl);
+    await renderer.render(
+      10,
+      target,
+      "preview",
+      "C:/输出/run/staging/预览.jpg",
+      currentControl,
+    );
 
-    expect(source.duplicate).toHaveBeenCalledWith(`批量输出-${target.id}`, false);
+    expect(source.duplicate).toHaveBeenCalledWith(
+      `批量输出-${target.id}`,
+      false,
+    );
     expect(output.layers[0].visible).toBe(true);
     expect(output.layers[0].layers[0].visible).toBe(true);
     expect(output.layers[1].visible).toBe(false);
-    expect(output.crop).toHaveBeenCalledWith({ left: 0, top: 0, right: 4800, bottom: 3600 });
+    expect(output.crop).toHaveBeenCalledWith({
+      left: 0,
+      top: 0,
+      right: 4800,
+      bottom: 3600,
+    });
     expect(output.resizeImage).toHaveBeenCalledWith(undefined, undefined, 72);
-    expect(runtime.createSolidBackground).toHaveBeenCalledWith(output, "#ffffff");
+    expect(runtime.createSolidBackground).toHaveBeenCalledWith(
+      output,
+      "#ffffff",
+    );
     expect(output.flatten).toHaveBeenCalledOnce();
-    expect(output.saveAs.jpg).toHaveBeenCalledWith(file, { quality: 12, embedColorProfile: false }, true);
+    expect(output.saveAs.jpg).toHaveBeenCalledWith(
+      file,
+      { quality: 12, embedColorProfile: false },
+      true,
+    );
     expect(currentControl.registered).toEqual([11]);
     expect(currentControl.unregistered).toEqual([11]);
     expect(output.closeWithoutSaving).toHaveBeenCalledOnce();
@@ -99,7 +142,9 @@ describe("Photoshop fixed-region renderer", () => {
     inspected.height = 3200;
     inspected.guides = [];
     const file = { name: "前片.png", isFile: true };
-    const storage = { fileEntry: vi.fn(async () => file) } as unknown as UxpOutputStorage;
+    const storage = {
+      fileEntry: vi.fn(async () => file),
+    } as unknown as UxpOutputStorage;
     const runtime: PhotoshopRenderRuntime = {
       documents: [],
       open: vi.fn(async () => inspected as never),
@@ -139,7 +184,9 @@ describe("Photoshop fixed-region renderer", () => {
     const output = document(31, "可编辑副本.psb");
     source.duplicate.mockResolvedValue(output);
     const file = { name: "工作副本.psb", isFile: true };
-    const storage = { fileEntry: vi.fn(async () => file) } as unknown as UxpOutputStorage;
+    const storage = {
+      fileEntry: vi.fn(async () => file),
+    } as unknown as UxpOutputStorage;
     const runtime: PhotoshopRenderRuntime = {
       documents: [source as never],
       open: vi.fn(),
@@ -157,7 +204,9 @@ describe("Photoshop fixed-region renderer", () => {
       visibleLayerPaths: [],
       markLayerPaths: [],
       profile: {
-        ...structuredClone(samplePreflightPayload.template.output.production[0].profile),
+        ...structuredClone(
+          samplePreflightPayload.template.output.production[0].profile,
+        ),
         format: "psb" as const,
         compression: "photoshop" as const,
         includeGuides: true,
@@ -165,7 +214,13 @@ describe("Photoshop fixed-region renderer", () => {
       },
     };
 
-    await renderer.render(30, target, "production", "C:/输出/run/staging/工作副本.psb", control());
+    await renderer.render(
+      30,
+      target,
+      "production",
+      "C:/输出/run/staging/工作副本.psb",
+      control(),
+    );
 
     expect(output.crop).not.toHaveBeenCalled();
     expect(output.resizeImage).not.toHaveBeenCalled();
@@ -185,7 +240,9 @@ describe("Photoshop fixed-region renderer", () => {
     const mark = layer(6, "前片");
     output.layers.push(layer(5, "MARKS｜工艺标记", [mark]));
     source.duplicate.mockResolvedValue(output);
-    const storage = { fileEntry: vi.fn(async () => ({ name: "前片.png", isFile: true })) } as unknown as UxpOutputStorage;
+    const storage = {
+      fileEntry: vi.fn(async () => ({ name: "前片.png", isFile: true })),
+    } as unknown as UxpOutputStorage;
     const runtime: PhotoshopRenderRuntime = {
       documents: [source as never],
       open: vi.fn(),
@@ -193,10 +250,18 @@ describe("Photoshop fixed-region renderer", () => {
       createSolidBackground: vi.fn(),
     };
     const renderer = new PhotoshopFixedRegionRenderer(storage, runtime);
-    const target = structuredClone(samplePreflightPayload.template.output.production[0]);
+    const target = structuredClone(
+      samplePreflightPayload.template.output.production[0],
+    );
     target.profile.includeMarks = true;
 
-    await renderer.render(35, target, "production", "C:/输出/run/staging/前片.png", control());
+    await renderer.render(
+      35,
+      target,
+      "production",
+      "C:/输出/run/staging/前片.png",
+      control(),
+    );
 
     expect(output.layers[2].visible).toBe(true);
     expect(mark.visible).toBe(true);
@@ -207,7 +272,9 @@ describe("Photoshop fixed-region renderer", () => {
     inspected.width = 2400;
     inspected.height = 3200;
     inspected.guides = [];
-    const storage = { fileEntry: vi.fn(async () => ({ name: "错误容器.jpg", isFile: true })) } as unknown as UxpOutputStorage;
+    const storage = {
+      fileEntry: vi.fn(async () => ({ name: "错误容器.jpg", isFile: true })),
+    } as unknown as UxpOutputStorage;
     const runtime: PhotoshopRenderRuntime = {
       documents: [],
       open: vi.fn(async () => inspected as never),
@@ -249,7 +316,12 @@ describe("Photoshop fixed-region renderer", () => {
     const renderer = new PhotoshopFixedRegionRenderer(storage, runtime);
 
     await expect(
-      renderer.render(10, samplePreflightPayload.template.output.preview, "preview", "output.jpg"),
+      renderer.render(
+        10,
+        samplePreflightPayload.template.output.preview,
+        "preview",
+        "output.jpg",
+      ),
     ).rejects.toThrow("自动关闭保护");
   });
 
@@ -268,13 +340,15 @@ describe("Photoshop fixed-region renderer", () => {
       createSolidBackground: vi.fn(async () => {}),
     });
 
-    await expect(renderer.render(
-      source.id,
-      samplePreflightPayload.template.output.preview,
-      "preview",
-      "C:/输出/run/staging/预览.jpg",
-      control(),
-    )).rejects.toMatchObject({
+    await expect(
+      renderer.render(
+        source.id,
+        samplePreflightPayload.template.output.preview,
+        "preview",
+        "C:/输出/run/staging/预览.jpg",
+        control(),
+      ),
+    ).rejects.toMatchObject({
       code: "photoshop-output-save-failed",
       disposition: "batch",
     });

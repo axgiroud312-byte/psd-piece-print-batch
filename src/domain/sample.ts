@@ -7,7 +7,14 @@ export const samplePreflightPayload: PreflightPayload = {
     version: "0.1.0-draft",
     masterFingerprint: "UNVERIFIED-DEMO-FINGERPRINT",
     masterSourceRef: "demo-master/成品母版.psd",
-    document: { width: 6000, height: 6000, ppi: 150, colorMode: "rgb", bitDepth: 8, iccProfile: null },
+    document: {
+      width: 6000,
+      height: 6000,
+      ppi: 150,
+      colorMode: "rgb",
+      bitDepth: 8,
+      iccProfile: null,
+    },
     garmentPieces: [
       { id: "piece-front", name: "前片" },
       { id: "piece-back", name: "后片" },
@@ -94,12 +101,22 @@ export const samplePreflightPayload: PreflightPayload = {
           includeMarks: false,
         },
       },
-      production: ([
-        ["front", "piece-front", "前片", 0, 0, 2400, 3200],
-        ["back", "piece-back", "后片", 2400, 0, 2400, 3200],
-        ["left-sleeve", "piece-left-sleeve", "左袖", 0, 3200, 1800, 2400],
-        ["right-sleeve", "piece-right-sleeve", "右袖", 1800, 3200, 1800, 2400],
-      ] as const).map(([id, garmentPieceId, name, x, y, width, height]) => ({
+      production: (
+        [
+          ["front", "piece-front", "前片", 0, 0, 2400, 3200],
+          ["back", "piece-back", "后片", 2400, 0, 2400, 3200],
+          ["left-sleeve", "piece-left-sleeve", "左袖", 0, 3200, 1800, 2400],
+          [
+            "right-sleeve",
+            "piece-right-sleeve",
+            "右袖",
+            1800,
+            3200,
+            1800,
+            2400,
+          ],
+        ] as const
+      ).map(([id, garmentPieceId, name, x, y, width, height]) => ({
         id: `production-${id}`,
         productionKind: "piece" as const,
         garmentPieceId,
@@ -126,16 +143,51 @@ export const samplePreflightPayload: PreflightPayload = {
     {
       name: "款式001-蓝花",
       files: [
-        { name: "front.png", width: 2400, height: 3200, ppi: 72, sourceRef: "款式001-蓝花/front.png", fingerprint: "demo-front-blue" },
-        { name: "back.jpg", width: 3000, height: 3000, ppi: 300, sourceRef: "款式001-蓝花/back.jpg", fingerprint: "demo-back-blue" },
-        { name: "sleeves.png", width: 1800, height: 2600, ppi: 150, sourceRef: "款式001-蓝花/sleeves.png", fingerprint: "demo-sleeves-blue" },
+        {
+          name: "front.png",
+          width: 2400,
+          height: 3200,
+          ppi: 72,
+          sourceRef: "款式001-蓝花/front.png",
+          fingerprint: "demo-front-blue",
+        },
+        {
+          name: "back.jpg",
+          width: 3000,
+          height: 3000,
+          ppi: 300,
+          sourceRef: "款式001-蓝花/back.jpg",
+          fingerprint: "demo-back-blue",
+        },
+        {
+          name: "sleeves.png",
+          width: 1800,
+          height: 2600,
+          ppi: 150,
+          sourceRef: "款式001-蓝花/sleeves.png",
+          fingerprint: "demo-sleeves-blue",
+        },
       ],
     },
     {
       name: "款式 002（待补图）",
       files: [
-        { name: "front.png", width: 2400, height: 3200, ppi: 300, sourceRef: "款式002/front.png", fingerprint: "demo-front-pending" },
-        { name: "sleeves.jpg", width: 1800, height: 2400, ppi: 72, sourceRef: "款式002/sleeves.jpg", fingerprint: "demo-sleeves-pending" },
+        {
+          name: "front.png",
+          width: 2400,
+          height: 3200,
+          ppi: 300,
+          sourceRef: "款式002/front.png",
+          fingerprint: "demo-front-pending",
+        },
+        {
+          name: "sleeves.jpg",
+          width: 1800,
+          height: 2400,
+          ppi: 72,
+          sourceRef: "款式002/sleeves.jpg",
+          fingerprint: "demo-sleeves-pending",
+        },
         { name: "说明.txt" },
       ],
     },

@@ -18,7 +18,9 @@ interface UxpFolder extends UxpEntry {
 
 interface UxpFileSystem {
   getFolder(): Promise<UxpFolder | null>;
-  getFileForOpening(options: { types: string[] }): Promise<UxpFile | UxpFile[] | null>;
+  getFileForOpening(options: {
+    types: string[];
+  }): Promise<UxpFile | UxpFile[] | null>;
 }
 
 interface UxpStorage {
@@ -26,7 +28,10 @@ interface UxpStorage {
   formats: { binary: string; utf8: string };
 }
 
-const scannedSources = new Map<string, { file: UxpFile; fingerprint: string; binaryFormat: string }>();
+const scannedSources = new Map<
+  string,
+  { file: UxpFile; fingerprint: string; binaryFormat: string }
+>();
 let scanSequence = 0;
 
 function extensionOf(name: string): string {
@@ -56,7 +61,10 @@ function crc32(bytes: Uint8Array, start: number, end: number): number {
 
 function pngDimensions(bytes: Uint8Array): { width: number; height: number } {
   const signature = [137, 80, 78, 71, 13, 10, 26, 10];
-  if (bytes.length < 45 || signature.some((value, index) => bytes[index] !== value)) {
+  if (
+    bytes.length < 45 ||
+    signature.some((value, index) => bytes[index] !== value)
+  ) {
     throw new Error("PNG 文件头无效");
   }
   let offset = 8;
@@ -83,7 +91,8 @@ function pngDimensions(bytes: Uint8Array): { width: number; height: number } {
       throw new Error(`PNG ${chunkType} 块校验失败`);
     }
     if (firstChunk) {
-      if (chunkType !== "IHDR" || length !== 13) throw new Error("PNG 缺少有效的 IHDR 块");
+      if (chunkType !== "IHDR" || length !== 13)
+        throw new Error("PNG 缺少有效的 IHDR 块");
       width = readUint32(bytes, dataOffset);
       height = readUint32(bytes, dataOffset + 4);
       firstChunk = false;
@@ -97,7 +106,8 @@ function pngDimensions(bytes: Uint8Array): { width: number; height: number } {
     }
     offset = crcOffset + 4;
   }
-  if (!hasImageData || !hasEnd || offset !== bytes.length) throw new Error("PNG 文件不完整");
+  if (!hasImageData || !hasEnd || offset !== bytes.length)
+    throw new Error("PNG 文件不完整");
   if (width <= 0 || height <= 0) throw new Error("PNG 像素尺寸无效");
   return { width, height };
 }
@@ -106,7 +116,10 @@ function jpegDimensions(bytes: Uint8Array): { width: number; height: number } {
   if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
     throw new Error("JPEG 文件头无效");
   }
-  const startOfFrameMarkers = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]);
+  const startOfFrameMarkers = new Set([
+    0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce,
+    0xcf,
+  ]);
   let offset = 2;
   let dimensions: { width: number; height: number } | undefined;
   let hasScan = false;
@@ -119,7 +132,8 @@ function jpegDimensions(bytes: Uint8Array): { width: number; height: number } {
     if (marker === 0xd8 || marker === 0x01) continue;
     if (marker === 0xd9 || offset + 1 >= bytes.length) break;
     const length = bytes[offset] * 256 + bytes[offset + 1];
-    if (length < 2 || offset + length > bytes.length) throw new Error("JPEG 段长度无效");
+    if (length < 2 || offset + length > bytes.length)
+      throw new Error("JPEG 段长度无效");
     if (marker === 0xda) {
       hasScan = true;
       break;
@@ -132,7 +146,8 @@ function jpegDimensions(bytes: Uint8Array): { width: number; height: number } {
     }
     offset += length;
   }
-  const hasEnd = bytes[bytes.length - 2] === 0xff && bytes[bytes.length - 1] === 0xd9;
+  const hasEnd =
+    bytes[bytes.length - 2] === 0xff && bytes[bytes.length - 1] === 0xd9;
   if (!dimensions) throw new Error("JPEG 中没有可用的尺寸段");
   if (!hasScan || !hasEnd) throw new Error("JPEG 文件不完整");
   return dimensions;
@@ -157,7 +172,8 @@ async function scanFile(
   if (!["png", "jpg", "jpeg"].includes(extension)) return { name: file.name };
   try {
     const data = await file.read({ format: binaryFormat });
-    if (!(data instanceof ArrayBuffer)) throw new Error("二进制素材读取结果无效");
+    if (!(data instanceof ArrayBuffer))
+      throw new Error("二进制素材读取结果无效");
     const fingerprint = fingerprintBytes(new Uint8Array(data));
     scannedSources.set(sourceRef, { file, fingerprint, binaryFormat });
     return {
@@ -184,7 +200,9 @@ export async function scanInputFolder(
   const rootEntries = await root.getEntries();
   const looseFiles = rootEntries.filter((entry) => entry.isFile);
   if (looseFiles.length > 0) {
-    throw new Error(`素材总文件夹根目录不能直接放文件：${looseFiles.map((file) => file.name).join("、")}`);
+    throw new Error(
+      `素材总文件夹根目录不能直接放文件：${looseFiles.map((file) => file.name).join("、")}`,
+    );
   }
   const folders = rootEntries.filter((entry) => entry.isFolder) as UxpFolder[];
   if (folders.length === 0) throw new Error("素材总文件夹中没有分组子文件夹");
@@ -208,11 +226,21 @@ export async function scanInputFolder(
   return groups;
 }
 
-export async function resolveScannedInputFile(sourceRef: string, expectedFingerprint: string): Promise<unknown> {
+export async function resolveScannedInputFile(
+  sourceRef: string,
+  expectedFingerprint: string,
+): Promise<unknown> {
   const source = scannedSources.get(sourceRef);
-  if (!source) throw new BatchStoppingError("input-access-expired", "素材来源引用已失效，请重新扫描素材目录");
+  if (!source)
+    throw new BatchStoppingError(
+      "input-access-expired",
+      "素材来源引用已失效，请重新扫描素材目录",
+    );
   if (source.fingerprint !== expectedFingerprint) {
-    throw new GroupOperationError("input-snapshot-invalid", "素材内容指纹与扫描记录不一致");
+    throw new GroupOperationError(
+      "input-snapshot-invalid",
+      "素材内容指纹与扫描记录不一致",
+    );
   }
   let data: ArrayBuffer | string;
   try {
@@ -220,28 +248,42 @@ export async function resolveScannedInputFile(sourceRef: string, expectedFingerp
   } catch (error) {
     throw new GroupOperationError(
       "input-file-read-failed",
-      error instanceof Error ? `重新读取素材失败：${error.message}` : "重新读取素材失败",
+      error instanceof Error
+        ? `重新读取素材失败：${error.message}`
+        : "重新读取素材失败",
     );
   }
   if (!(data instanceof ArrayBuffer)) {
-    throw new GroupOperationError("input-file-read-failed", "重新读取素材时未获得二进制内容");
+    throw new GroupOperationError(
+      "input-file-read-failed",
+      "重新读取素材时未获得二进制内容",
+    );
   }
   if (fingerprintBytes(new Uint8Array(data)) !== expectedFingerprint) {
-    throw new GroupOperationError("input-content-changed", "素材在预检后发生变化，请重新扫描素材目录");
+    throw new GroupOperationError(
+      "input-content-changed",
+      "素材在预检后发生变化，请重新扫描素材目录",
+    );
   }
   return source.file;
 }
 
-export async function selectAndScanInputRoot(storageOverride?: UxpStorage): Promise<InputGroupSnapshot[] | null> {
+export async function selectAndScanInputRoot(
+  storageOverride?: UxpStorage,
+): Promise<InputGroupSnapshot[] | null> {
   const storage = storageOverride ?? (require("uxp").storage as UxpStorage);
   const root = await storage.localFileSystem.getFolder();
   if (!root) return null;
   return scanInputFolder(root, storage.formats.binary);
 }
 
-export async function selectTemplateConfigJson(storageOverride?: UxpStorage): Promise<string | null> {
+export async function selectTemplateConfigJson(
+  storageOverride?: UxpStorage,
+): Promise<string | null> {
   const storage = storageOverride ?? (require("uxp").storage as UxpStorage);
-  const selected = await storage.localFileSystem.getFileForOpening({ types: ["json"] });
+  const selected = await storage.localFileSystem.getFileForOpening({
+    types: ["json"],
+  });
   const file = Array.isArray(selected) ? selected[0] : selected;
   if (!file) return null;
   const text = await file.read({ format: storage.formats.utf8 });

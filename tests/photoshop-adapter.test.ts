@@ -25,7 +25,14 @@ function outputPort(): PhotoshopOutputPort & { committed: number } {
   return {
     committed: 0,
     async preflight() {},
-    async exportOutputs(scope, template, group, _documentId, pluginVersion, photoshopVersion) {
+    async exportOutputs(
+      scope,
+      template,
+      group,
+      _documentId,
+      pluginVersion,
+      photoshopVersion,
+    ) {
       const temporaryLocation = `temp/${scope.scopeId}`;
       scope.temporaryLocations.push(temporaryLocation);
       const preview = template.output.preview;
@@ -34,27 +41,29 @@ function outputPort(): PhotoshopOutputPort & { committed: number } {
         finalLocation: `runs/${scope.runId}/${group.name}`,
         groupName: group.name,
         capabilityProfileId: template.output.capabilityProfileId,
-        expectedArtifacts: [{
-          targetId: preview.id,
-          name: preview.fileName,
-          kind: "preview",
-          region: preview.region,
-          visibleLayerPaths: preview.visibleLayerPaths,
-          markLayerPaths: preview.markLayerPaths,
-          maximumFileBytes: preview.maximumFileBytes,
-          renderProfile: preview.profile,
-          metadata: {
-            format: preview.profile.format,
-            width: preview.region.width,
-            height: preview.region.height,
-            ppi: preview.profile.ppi,
-            colorMode: preview.profile.colorMode,
-            bitDepth: preview.profile.bitDepth,
-            iccProfile: null,
-            background: "opaque",
-            includesGuides: false,
+        expectedArtifacts: [
+          {
+            targetId: preview.id,
+            name: preview.fileName,
+            kind: "preview",
+            region: preview.region,
+            visibleLayerPaths: preview.visibleLayerPaths,
+            markLayerPaths: preview.markLayerPaths,
+            maximumFileBytes: preview.maximumFileBytes,
+            renderProfile: preview.profile,
+            metadata: {
+              format: preview.profile.format,
+              width: preview.region.width,
+              height: preview.region.height,
+              ppi: preview.profile.ppi,
+              colorMode: preview.profile.colorMode,
+              bitDepth: preview.profile.bitDepth,
+              iccProfile: null,
+              background: "opaque",
+              includesGuides: false,
+            },
           },
-        }],
+        ],
         audit: {
           pluginVersion,
           outputImplementationVersion: "test-output-v1",
@@ -71,13 +80,15 @@ function outputPort(): PhotoshopOutputPort & { committed: number } {
       return {
         ...output,
         taskFingerprint,
-        artifacts: [{
-          name: output.expectedArtifacts[0].name,
-          kind: "preview",
-          fingerprint: "preview-fingerprint",
-          byteLength: 1,
-          metadata: output.expectedArtifacts[0].metadata,
-        }],
+        artifacts: [
+          {
+            name: output.expectedArtifacts[0].name,
+            kind: "preview",
+            fingerprint: "preview-fingerprint",
+            byteLength: 1,
+            metadata: output.expectedArtifacts[0].metadata,
+          },
+        ],
       };
     },
     async commitResult(_scope, output) {
@@ -90,7 +101,10 @@ function outputPort(): PhotoshopOutputPort & { committed: number } {
   };
 }
 
-function createFakeRuntime(linked = false, contentExtras: Array<Record<string, any>> = []) {
+function createFakeRuntime(
+  linked = false,
+  contentExtras: Array<Record<string, any>> = [],
+) {
   const registered: number[] = [];
   const modalCommands: string[] = [];
   const documents: Array<Record<string, any>> = [];
@@ -183,35 +197,45 @@ function createFakeRuntime(linked = false, contentExtras: Array<Record<string, a
       }),
     },
     core: {
-      executeAsModal: vi.fn(async (operation: (context: any) => Promise<unknown>, options: any) => {
-        modalCommands.push(options.commandName);
-        const automatic = new Set<number>();
-        try {
-          return await operation({
-            isCancelled: false,
-            hostControl: {
-              registerAutoCloseDocument: async (id: number) => {
-                registered.push(id);
-                automatic.add(id);
+      executeAsModal: vi.fn(
+        async (operation: (context: any) => Promise<unknown>, options: any) => {
+          modalCommands.push(options.commandName);
+          const automatic = new Set<number>();
+          try {
+            return await operation({
+              isCancelled: false,
+              hostControl: {
+                registerAutoCloseDocument: async (id: number) => {
+                  registered.push(id);
+                  automatic.add(id);
+                },
+                unregisterAutoCloseDocument: async (id: number) => {
+                  automatic.delete(id);
+                },
               },
-              unregisterAutoCloseDocument: async (id: number) => {
-                automatic.delete(id);
-              },
-            },
-          });
-        } finally {
-          for (const id of automatic) {
-            const document = documents.find((candidate) => candidate.id === id);
-            if (document?.closeWithoutSaving) await document.closeWithoutSaving();
+            });
+          } finally {
+            for (const id of automatic) {
+              const document = documents.find(
+                (candidate) => candidate.id === id,
+              );
+              if (document?.closeWithoutSaving)
+                await document.closeWithoutSaving();
+            }
           }
-        }
-      }),
+        },
+      ),
     },
     action: {
       batchPlay: vi.fn(async (commands: Array<Record<string, unknown>>) => {
         const command = commands[0];
         if (command._obj === "get") {
-          return [{ smartObject: { linked }, smartObjectMore: { ID: "embedded-front" } }];
+          return [
+            {
+              smartObject: { linked },
+              smartObjectMore: { ID: "embedded-front" },
+            },
+          ];
         }
         if (command._obj === "placedLayerEditContents") {
           contentDocument.layers = [oldReplacement, ...contentExtras];
@@ -256,7 +280,9 @@ describe("Photoshop adapter", () => {
     const scope = adapter.createScope("locked");
 
     await expect(
-      adapter.createWorkCopy(scope, template, { isCancellationRequested: false }),
+      adapter.createWorkCopy(scope, template, {
+        isCancellationRequested: false,
+      }),
     ).rejects.toBeInstanceOf(PhotoshopCapabilityError);
   });
 
@@ -269,7 +295,11 @@ describe("Photoshop adapter", () => {
         smartObjectEditingValidated: true,
         validatedPhotoshopVersion: "25.0.0",
       },
-      masterResolver: { resolve: async () => { throw new Error("master grant expired"); } },
+      masterResolver: {
+        resolve: async () => {
+          throw new Error("master grant expired");
+        },
+      },
       outputPort: outputPort(),
       runtime: fake.runtime as never,
     });
@@ -366,7 +396,9 @@ describe("Photoshop adapter", () => {
 
   it("blocks unverified nested content before placing artwork", async () => {
     const { template, group } = singleEntryFixture();
-    const fake = createFakeRuntime(false, [{ id: 55, name: "复杂组", layers: [{ id: 56, name: "嵌套层" }] }]);
+    const fake = createFakeRuntime(false, [
+      { id: 55, name: "复杂组", layers: [{ id: 56, name: "嵌套层" }] },
+    ]);
     const adapter = new PhotoshopBatchAdapter({
       capability: {
         m0Validated: true,
@@ -435,7 +467,9 @@ describe("Photoshop adapter", () => {
     });
 
     await expect(
-      adapter.createWorkCopy(adapter.createScope("version"), template, { isCancellationRequested: false }),
+      adapter.createWorkCopy(adapter.createScope("version"), template, {
+        isCancellationRequested: false,
+      }),
     ).rejects.toThrow("当前 Photoshop 25.1.0 不在已验证版本 25.0.0 内");
   });
 
@@ -512,34 +546,52 @@ describe("Photoshop adapter", () => {
 describe("Photoshop operation guards", () => {
   it("surfaces resolved batchPlay error descriptors", () => {
     expect(() =>
-      assertBatchPlayResults([{ _obj: "error", result: -25922, message: "命令不可用" }], "置入素材"),
+      assertBatchPlayResults(
+        [{ _obj: "error", result: -25922, message: "命令不可用" }],
+        "置入素材",
+      ),
     ).toThrow("置入素材失败：命令不可用");
     expect(() =>
-      assertBatchPlayResults([{ _obj: "error", result: -128, message: "User cancelled" }], "置入素材"),
+      assertBatchPlayResults(
+        [{ _obj: "error", result: -128, message: "User cancelled" }],
+        "置入素材",
+      ),
     ).toThrow("已由 Photoshop 取消");
   });
 
   it("calculates strict, cover, and contain transforms without stretching", () => {
     const bounds = { left: 0, top: 0, right: 100, bottom: 50 };
     expect(
-      calculateFitTransform(bounds, { width: 200, height: 200 }, {
-        mode: "cover",
-        anchor: { kind: "offset", x: 10, y: -5 },
-      }),
+      calculateFitTransform(
+        bounds,
+        { width: 200, height: 200 },
+        {
+          mode: "cover",
+          anchor: { kind: "offset", x: 10, y: -5 },
+        },
+      ),
     ).toEqual({ scalePercent: 400, targetCenterX: 110, targetCenterY: 95 });
     expect(
-      calculateFitTransform(bounds, { width: 200, height: 200 }, {
-        mode: "contain",
-        anchor: { kind: "center" },
-        allowBlankArea: true,
-        background: "#fff",
-      }),
+      calculateFitTransform(
+        bounds,
+        { width: 200, height: 200 },
+        {
+          mode: "contain",
+          anchor: { kind: "center" },
+          allowBlankArea: true,
+          background: "#fff",
+        },
+      ),
     ).toEqual({ scalePercent: 200, targetCenterX: 100, targetCenterY: 100 });
     expect(() =>
-      calculateFitTransform(bounds, { width: 200, height: 200 }, {
-        mode: "strict",
-        anchor: { kind: "center" },
-      }),
+      calculateFitTransform(
+        bounds,
+        { width: 200, height: 200 },
+        {
+          mode: "strict",
+          anchor: { kind: "center" },
+        },
+      ),
     ).toThrow("比例与智能对象画布不一致");
   });
 });

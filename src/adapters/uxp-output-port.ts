@@ -6,10 +6,7 @@ import {
   PhotoshopFixedRegionRenderer,
   type PhotoshopRenderRuntime,
 } from "./photoshop-fixed-region-renderer";
-import {
-  UxpOutputStorage,
-  type UxpOutputFolder,
-} from "./uxp-output-storage";
+import { UxpOutputStorage, type UxpOutputFolder } from "./uxp-output-storage";
 
 export interface UxpOutputPortOptions {
   rootLocation: string;
@@ -21,7 +18,9 @@ export interface UxpOutputPortOptions {
   now?: () => string;
 }
 
-export function createUxpOutputPort(options: UxpOutputPortOptions): FixedRegionOutputPort {
+export function createUxpOutputPort(
+  options: UxpOutputPortOptions,
+): FixedRegionOutputPort {
   const storage = new UxpOutputStorage({
     rootLocation: options.rootLocation,
     root: options.root,

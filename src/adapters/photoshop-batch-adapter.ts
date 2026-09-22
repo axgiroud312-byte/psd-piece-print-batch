@@ -1,7 +1,17 @@
-import type { ArtworkAssignment, ArtworkEntry, FitRule, InputGroupSnapshot, TemplateConfig } from "../domain/types";
+import type {
+  ArtworkAssignment,
+  ArtworkEntry,
+  FitRule,
+  InputGroupSnapshot,
+  TemplateConfig,
+} from "../domain/types";
 import { resolveScannedInputFile } from "./uxp-input-scanner";
 import { OperationCancelledError } from "../workflow/cancellation";
-import { BatchStoppingError, ResourceCleanupError, WorkflowFailure } from "../workflow/failures";
+import {
+  BatchStoppingError,
+  ResourceCleanupError,
+  WorkflowFailure,
+} from "../workflow/failures";
 import type {
   CancellationToken,
   CommittedOutput,
@@ -20,7 +30,10 @@ interface PhotoshopLayer {
   boundsNoEffects?: BoundsLike;
   scale?(widthPercent: number, heightPercent: number): Promise<void>;
   translate?(deltaX: number, deltaY: number): Promise<void>;
-  move?(relativeObject: PhotoshopLayer, insertionLocation: unknown): Promise<void>;
+  move?(
+    relativeObject: PhotoshopLayer,
+    insertionLocation: unknown,
+  ): Promise<void>;
   delete?(): Promise<void>;
 }
 
@@ -34,7 +47,10 @@ interface PhotoshopDocument {
   bitsPerChannel?: unknown;
   colorProfileName?: string;
   layers: PhotoshopLayer[];
-  duplicate?(name: string, mergeLayersOnly?: boolean): Promise<PhotoshopDocument>;
+  duplicate?(
+    name: string,
+    mergeLayersOnly?: boolean,
+  ): Promise<PhotoshopDocument>;
   save?(): Promise<void>;
   closeWithoutSaving?(): Promise<void>;
 }
@@ -60,7 +76,10 @@ interface PhotoshopRuntime {
     ): Promise<T>;
   };
   action: {
-    batchPlay(commands: unknown[], options: Record<string, unknown>): Promise<Array<Record<string, unknown>>>;
+    batchPlay(
+      commands: unknown[],
+      options: Record<string, unknown>,
+    ): Promise<Array<Record<string, unknown>>>;
   };
   constants: {
     LayerKind?: { SMARTOBJECT?: unknown };
@@ -126,7 +145,10 @@ export interface PhotoshopOutputPort {
     taskFingerprint: string,
     documentControl: ModalDocumentControl,
   ): Promise<VerifiedOutput>;
-  commitResult(scope: ExecutionScope, output: VerifiedOutput): Promise<CommittedOutput>;
+  commitResult(
+    scope: ExecutionScope,
+    output: VerifiedOutput,
+  ): Promise<CommittedOutput>;
   cleanup(scope: ExecutionScope): Promise<void>;
 }
 
@@ -179,11 +201,15 @@ function documentColorMode(value: unknown): "rgb" | "cmyk" | undefined {
 
 function documentBitDepth(value: unknown): 8 | 16 | undefined {
   if (value === 8 || String(value).toLowerCase().includes("eight")) return 8;
-  if (value === 16 || String(value).toLowerCase().includes("sixteen")) return 16;
+  if (value === 16 || String(value).toLowerCase().includes("sixteen"))
+    return 16;
   return undefined;
 }
 
-function assertDocumentSpec(document: PhotoshopDocument, template: TemplateConfig): void {
+function assertDocumentSpec(
+  document: PhotoshopDocument,
+  template: TemplateConfig,
+): void {
   const expected = template.document;
   const actual = {
     width: numberValue(document.width, "母版宽度"),
@@ -192,7 +218,9 @@ function assertDocumentSpec(document: PhotoshopDocument, template: TemplateConfi
     colorMode: documentColorMode(document.mode),
     bitDepth: documentBitDepth(document.bitsPerChannel),
     iccProfile:
-      document.colorProfileName && document.colorProfileName !== "None" ? document.colorProfileName : null,
+      document.colorProfileName && document.colorProfileName !== "None"
+        ? document.colorProfileName
+        : null,
   };
   if (
     actual.width !== expected.width ||
@@ -210,7 +238,9 @@ function assertDocumentSpec(document: PhotoshopDocument, template: TemplateConfi
 }
 
 function anchorOffset(fit: FitRule): { x: number; y: number } {
-  return fit.anchor.kind === "offset" ? { x: fit.anchor.x, y: fit.anchor.y } : { x: 0, y: 0 };
+  return fit.anchor.kind === "offset"
+    ? { x: fit.anchor.x, y: fit.anchor.y }
+    : { x: 0, y: 0 };
 }
 
 export function calculateFitTransform(
@@ -218,8 +248,12 @@ export function calculateFitTransform(
   canvas: { width: number; height: number },
   fit: FitRule,
 ): FitTransform {
-  const width = numberValue(bounds.right, "素材右边界") - numberValue(bounds.left, "素材左边界");
-  const height = numberValue(bounds.bottom, "素材下边界") - numberValue(bounds.top, "素材上边界");
+  const width =
+    numberValue(bounds.right, "素材右边界") -
+    numberValue(bounds.left, "素材左边界");
+  const height =
+    numberValue(bounds.bottom, "素材下边界") -
+    numberValue(bounds.top, "素材上边界");
   if (width <= 0 || height <= 0) throw new Error("素材可见边界为空");
   const widthScale = canvas.width / width;
   const heightScale = canvas.height / height;
@@ -240,17 +274,31 @@ export function calculateFitTransform(
   };
 }
 
-export function assertBatchPlayResults(results: Array<Record<string, unknown>>, operation: string): void {
+export function assertBatchPlayResults(
+  results: Array<Record<string, unknown>>,
+  operation: string,
+): void {
   for (const result of results) {
-    if (result.result === -128) throw new OperationCancelledError(`${operation}已由 Photoshop 取消`);
-    if (result._obj === "error" || typeof result.message === "string" && typeof result.result === "number" && result.result < 0) {
-      throw new Error(`${operation}失败：${String(result.message ?? result.result ?? "未知 Photoshop 错误")}`);
+    if (result.result === -128)
+      throw new OperationCancelledError(`${operation}已由 Photoshop 取消`);
+    if (
+      result._obj === "error" ||
+      (typeof result.message === "string" &&
+        typeof result.result === "number" &&
+        result.result < 0)
+    ) {
+      throw new Error(
+        `${operation}失败：${String(result.message ?? result.result ?? "未知 Photoshop 错误")}`,
+      );
     }
   }
 }
 
 function defaultRuntime(): PhotoshopRuntime {
-  const photoshop = require("photoshop") as Omit<PhotoshopRuntime, "localFileSystem" | "hostVersion">;
+  const photoshop = require("photoshop") as Omit<
+    PhotoshopRuntime,
+    "localFileSystem" | "hostVersion"
+  >;
   const uxp = require("uxp") as {
     host: { version: string };
     storage: { localFileSystem: PhotoshopRuntime["localFileSystem"] };
@@ -262,19 +310,29 @@ function defaultRuntime(): PhotoshopRuntime {
   };
 }
 
-function documentById(runtime: PhotoshopRuntime, documentId: number | undefined): PhotoshopDocument {
-  const document = runtime.app.documents.find((candidate) => candidate.id === documentId);
+function documentById(
+  runtime: PhotoshopRuntime,
+  documentId: number | undefined,
+): PhotoshopDocument {
+  const document = runtime.app.documents.find(
+    (candidate) => candidate.id === documentId,
+  );
   if (!document) throw new Error(`Photoshop 文档 ${String(documentId)} 不存在`);
   return document;
 }
 
-function findLayerAtPath(document: PhotoshopDocument, path: string[]): PhotoshopLayer {
+function findLayerAtPath(
+  document: PhotoshopDocument,
+  path: string[],
+): PhotoshopLayer {
   let layers = document.layers;
   let current: PhotoshopLayer | undefined;
   for (const segment of path) {
     const matches = layers.filter((layer) => layer.name === segment);
     if (matches.length !== 1) {
-      throw new Error(`图层路径 ${path.join("/")} 在 ${segment} 处${matches.length === 0 ? "不存在" : "不唯一"}`);
+      throw new Error(
+        `图层路径 ${path.join("/")} 在 ${segment} 处${matches.length === 0 ? "不存在" : "不唯一"}`,
+      );
     }
     current = matches[0];
     layers = current.layers ?? [];
@@ -284,13 +342,25 @@ function findLayerAtPath(document: PhotoshopDocument, path: string[]): Photoshop
 }
 
 function descriptorSourceIdentity(descriptor: Record<string, unknown>): string {
-  const smartObject = descriptor.smartObject as Record<string, unknown> | undefined;
-  const smartObjectMore = descriptor.smartObjectMore as Record<string, unknown> | undefined;
-  const linked = Boolean(smartObject?.linked ?? smartObject?.link ?? descriptor.linked);
-  if (linked) throw new Error("首版不支持外链智能对象，请先转换为嵌入式智能对象");
-  const fileReference = String(descriptor.fileReference ?? smartObject?.fileReference ?? "").toLowerCase();
-  if (/\.(pdf|ai)$/.test(fileReference)) throw new Error("首版不支持 PDF/AI 智能对象内容");
-  const identity = smartObjectMore?.ID ?? smartObjectMore?.id ?? smartObject?.ID ?? smartObject?.id;
+  const smartObject = descriptor.smartObject as
+    Record<string, unknown> | undefined;
+  const smartObjectMore = descriptor.smartObjectMore as
+    Record<string, unknown> | undefined;
+  const linked = Boolean(
+    smartObject?.linked ?? smartObject?.link ?? descriptor.linked,
+  );
+  if (linked)
+    throw new Error("首版不支持外链智能对象，请先转换为嵌入式智能对象");
+  const fileReference = String(
+    descriptor.fileReference ?? smartObject?.fileReference ?? "",
+  ).toLowerCase();
+  if (/\.(pdf|ai)$/.test(fileReference))
+    throw new Error("首版不支持 PDF/AI 智能对象内容");
+  const identity =
+    smartObjectMore?.ID ??
+    smartObjectMore?.id ??
+    smartObject?.ID ??
+    smartObject?.id;
   if (typeof identity !== "string" && typeof identity !== "number") {
     throw new Error("无法取得智能对象内容源标识，需要在 M0 中记录并验证描述符");
   }
@@ -302,15 +372,20 @@ function stableDescriptorValue(value: unknown): unknown {
   if (value && typeof value === "object") {
     const result: Record<string, unknown> = {};
     for (const key of Object.keys(value as Record<string, unknown>).sort()) {
-      result[key] = stableDescriptorValue((value as Record<string, unknown>)[key]);
+      result[key] = stableDescriptorValue(
+        (value as Record<string, unknown>)[key],
+      );
     }
     return result;
   }
   return value;
 }
 
-function descriptorStructureSignature(descriptor: Record<string, unknown>): string {
-  const smartObjectMore = descriptor.smartObjectMore as Record<string, unknown> | undefined;
+function descriptorStructureSignature(
+  descriptor: Record<string, unknown>,
+): string {
+  const smartObjectMore = descriptor.smartObjectMore as
+    Record<string, unknown> | undefined;
   return JSON.stringify(
     stableDescriptorValue({
       transform: smartObjectMore?.transform ?? descriptor.transform,
@@ -323,7 +398,10 @@ function descriptorStructureSignature(descriptor: Record<string, unknown>): stri
   );
 }
 
-function assertSimpleReplacementLayer(descriptor: Record<string, unknown>, layerName: string): void {
+function assertSimpleReplacementLayer(
+  descriptor: Record<string, unknown>,
+  layerName: string,
+): void {
   const opacity = descriptor.opacity;
   const fillOpacity = descriptor.fillOpacity;
   const modeValue =
@@ -337,16 +415,21 @@ function assertSimpleReplacementLayer(descriptor: Record<string, unknown>, layer
     descriptor.group === true ||
     descriptor.clipping === true ||
     descriptor.visible === false ||
-    (modeValue !== undefined && modeValue !== "normal" && modeValue !== "normalBlendMode") ||
+    (modeValue !== undefined &&
+      modeValue !== "normal" &&
+      modeValue !== "normalBlendMode") ||
     (opacity !== undefined && opacity !== 255) ||
     (fillOpacity !== undefined && fillOpacity !== 255)
   ) {
-    throw new Error(`${layerName} 带有隐藏、混合、蒙版、效果、剪贴或非默认透明度，首版不自动迁移这些语义`);
+    throw new Error(
+      `${layerName} 带有隐藏、混合、蒙版、效果、剪贴或非默认透明度，首版不自动迁移这些语义`,
+    );
   }
 }
 
 async function closeDocument(document: PhotoshopDocument): Promise<void> {
-  if (!document.closeWithoutSaving) throw new Error(`文档 ${document.name} 不支持无保存关闭`);
+  if (!document.closeWithoutSaving)
+    throw new Error(`文档 ${document.name} 不支持无保存关闭`);
   await document.closeWithoutSaving();
 }
 
@@ -354,9 +437,13 @@ function ensureNotCancelled(cancellation: CancellationToken): void {
   if (cancellation.isCancellationRequested) throw new OperationCancelledError();
 }
 
-function ensureModalNotCancelled(context: ModalExecutionContext, cancellation: CancellationToken): void {
+function ensureModalNotCancelled(
+  context: ModalExecutionContext,
+  cancellation: CancellationToken,
+): void {
   ensureNotCancelled(cancellation);
-  if (context.isCancelled) throw new OperationCancelledError("Photoshop 已取消当前操作");
+  if (context.isCancelled)
+    throw new OperationCancelledError("Photoshop 已取消当前操作");
 }
 
 export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
@@ -385,24 +472,45 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
   }
 
   private assertCapability(): void {
-    if (!this.capability.m0Validated || !this.capability.smartObjectEditingValidated) {
-      throw new PhotoshopCapabilityError("真实 Photoshop 操作尚未通过 M0 验证，当前入口保持禁用");
+    if (
+      !this.capability.m0Validated ||
+      !this.capability.smartObjectEditingValidated
+    ) {
+      throw new PhotoshopCapabilityError(
+        "真实 Photoshop 操作尚未通过 M0 验证，当前入口保持禁用",
+      );
     }
     const expected = this.capability.validatedPhotoshopVersion;
-    if (!expected) throw new PhotoshopCapabilityError("缺少经过 M0 验证的 Photoshop 精确版本");
+    if (!expected)
+      throw new PhotoshopCapabilityError(
+        "缺少经过 M0 验证的 Photoshop 精确版本",
+      );
     const actual = this.runtime.hostVersion;
     if (!actual || expected !== actual) {
-      throw new PhotoshopCapabilityError(`当前 Photoshop ${actual} 不在已验证版本 ${expected} 内`);
+      throw new PhotoshopCapabilityError(
+        `当前 Photoshop ${actual} 不在已验证版本 ${expected} 内`,
+      );
     }
   }
 
-  private async modal<T>(commandName: string, operation: (context: ModalExecutionContext) => Promise<T>): Promise<T> {
+  private async modal<T>(
+    commandName: string,
+    operation: (context: ModalExecutionContext) => Promise<T>,
+  ): Promise<T> {
     try {
-      return await this.runtime.core.executeAsModal(operation, { commandName, interactive: false });
+      return await this.runtime.core.executeAsModal(operation, {
+        commandName,
+        interactive: false,
+      });
     } catch (error) {
       const record = error as { number?: number; message?: string };
-      if (record.number === -128 || /cancelled|canceled|取消/i.test(record.message ?? "")) {
-        throw new OperationCancelledError(record.message ?? "Photoshop 已取消当前操作");
+      if (
+        record.number === -128 ||
+        /cancelled|canceled|取消/i.test(record.message ?? "")
+      ) {
+        throw new OperationCancelledError(
+          record.message ?? "Photoshop 已取消当前操作",
+        );
       }
       throw error;
     }
@@ -419,10 +527,20 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
   ): Promise<void> {
     this.assertCapability();
     ensureNotCancelled(cancellation);
-    await this.outputPort.preflight(runId, template, group, pluginVersion, attemptId, taskFingerprint);
+    await this.outputPort.preflight(
+      runId,
+      template,
+      group,
+      pluginVersion,
+      attemptId,
+      taskFingerprint,
+    );
   }
 
-  private async selectLayer(documentId: number, layerId: number): Promise<void> {
+  private async selectLayer(
+    documentId: number,
+    layerId: number,
+  ): Promise<void> {
     const results = await this.runtime.action.batchPlay(
       [
         {
@@ -440,7 +558,10 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
     assertBatchPlayResults(results, "选择智能对象图层");
   }
 
-  private async layerDescriptor(documentId: number, layerId: number): Promise<Record<string, unknown>> {
+  private async layerDescriptor(
+    documentId: number,
+    layerId: number,
+  ): Promise<Record<string, unknown>> {
     const results = await this.runtime.action.batchPlay(
       [
         {
@@ -459,7 +580,10 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
     return results[0];
   }
 
-  private async resolveDocumentTemplate(document: PhotoshopDocument, template: TemplateConfig): Promise<ResolvedTemplateState> {
+  private async resolveDocumentTemplate(
+    document: PhotoshopDocument,
+    template: TemplateConfig,
+  ): Promise<ResolvedTemplateState> {
     const sources = new Map<string, ResolvedSource>();
     const identityOwners = new Map<string, string>();
     const signatures: string[] = [];
@@ -471,18 +595,29 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
       }
       const descriptor = await this.layerDescriptor(document.id, layer.id);
       const sourceIdentity = descriptorSourceIdentity(descriptor);
-      const entry = template.artworkEntries.find((candidate) => candidate.id === instance.artworkEntryId);
+      const entry = template.artworkEntries.find(
+        (candidate) => candidate.id === instance.artworkEntryId,
+      );
       if (!entry) throw new Error(`实例 ${instance.id} 的素材入口不存在`);
       const existing = sources.get(entry.contentSourceId);
       if (existing && existing.sourceIdentity !== sourceIdentity) {
-        throw new Error(`登记为共享的内容源 ${entry.contentSourceId} 在 Photoshop 中并未共享`);
+        throw new Error(
+          `登记为共享的内容源 ${entry.contentSourceId} 在 Photoshop 中并未共享`,
+        );
       }
       const owner = identityOwners.get(sourceIdentity);
       if (owner && owner !== entry.contentSourceId) {
-        throw new Error(`登记为独立的内容源 ${owner} 与 ${entry.contentSourceId} 实际发生联动`);
+        throw new Error(
+          `登记为独立的内容源 ${owner} 与 ${entry.contentSourceId} 实际发生联动`,
+        );
       }
       identityOwners.set(sourceIdentity, entry.contentSourceId);
-      if (!existing) sources.set(entry.contentSourceId, { entry, layerId: layer.id, sourceIdentity });
+      if (!existing)
+        sources.set(entry.contentSourceId, {
+          entry,
+          layerId: layer.id,
+          sourceIdentity,
+        });
       signatures.push(
         `${instance.id}:${instance.layerPath.join("/")}:${layer.id}:${sourceIdentity}:${descriptorStructureSignature(descriptor)}`,
       );
@@ -494,7 +629,11 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
     };
   }
 
-  createScope(runId: string, attemptId = "direct-attempt", taskFingerprint = "unavailable"): ExecutionScope {
+  createScope(
+    runId: string,
+    attemptId = "direct-attempt",
+    taskFingerprint = "unavailable",
+  ): ExecutionScope {
     this.sequence += 1;
     return {
       scopeId: `${runId}-photoshop-${this.sequence}`,
@@ -514,16 +653,28 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
     this.assertCapability();
     ensureNotCancelled(cancellation);
     try {
-      const masterFile = await this.masterResolver.resolve(template.masterSourceRef, template.masterFingerprint);
+      const masterFile = await this.masterResolver.resolve(
+        template.masterSourceRef,
+        template.masterFingerprint,
+      );
       await this.modal("创建母版工作副本", async (context) => {
         ensureModalNotCancelled(context, cancellation);
-        const before = new Set(this.runtime.app.documents.map((document) => document.id));
+        const before = new Set(
+          this.runtime.app.documents.map((document) => document.id),
+        );
         const master = await this.runtime.app.open(masterFile);
-        if (before.has(master.id)) throw new Error("母版已经由用户打开，无法确认文档所有权，请先关闭后重试");
+        if (before.has(master.id))
+          throw new Error(
+            "母版已经由用户打开，无法确认文档所有权，请先关闭后重试",
+          );
         scope.documents.masterDocumentId = master.id;
         await context.hostControl.registerAutoCloseDocument(master.id);
-        if (!master.duplicate) throw new Error("当前 Photoshop 不支持复制未合并文档");
-        const workCopy = await master.duplicate(`${template.templateId}-${scope.runId}`, false);
+        if (!master.duplicate)
+          throw new Error("当前 Photoshop 不支持复制未合并文档");
+        const workCopy = await master.duplicate(
+          `${template.templateId}-${scope.runId}`,
+          false,
+        );
         scope.documents.workCopyDocumentId = workCopy.id;
         await context.hostControl.registerAutoCloseDocument(workCopy.id);
         assertDocumentSpec(workCopy, template);
@@ -531,10 +682,16 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
         await context.hostControl.unregisterAutoCloseDocument(workCopy.id);
       });
     } catch (error) {
-      if (error instanceof OperationCancelledError || error instanceof WorkflowFailure) throw error;
+      if (
+        error instanceof OperationCancelledError ||
+        error instanceof WorkflowFailure
+      )
+        throw error;
       throw new BatchStoppingError(
         "master-work-copy-failed",
-        error instanceof Error ? `无法从登记母版创建工作副本：${error.message}` : "无法从登记母版创建工作副本",
+        error instanceof Error
+          ? `无法从登记母版创建工作副本：${error.message}`
+          : "无法从登记母版创建工作副本",
       );
     }
   }
@@ -547,7 +704,10 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
     this.assertCapability();
     await this.modal("重新解析模板结构", async (context) => {
       ensureModalNotCancelled(context, cancellation);
-      const document = documentById(this.runtime, Number(scope.documents.workCopyDocumentId));
+      const document = documentById(
+        this.runtime,
+        Number(scope.documents.workCopyDocumentId),
+      );
       const resolved = await this.resolveDocumentTemplate(document, template);
       this.resolvedScopes.set(scope.scopeId, resolved);
     });
@@ -564,14 +724,20 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
     for (const assignment of assignments) {
       ensureNotCancelled(cancellation);
       const source = resolved.sources.get(assignment.contentSourceId);
-      if (!source) throw new Error(`工作副本中没有内容源 ${assignment.contentSourceId}`);
-      const artworkFile = await this.artworkResolver.resolve(assignment.sourceRef, assignment.sourceFingerprint);
+      if (!source)
+        throw new Error(`工作副本中没有内容源 ${assignment.contentSourceId}`);
+      const artworkFile = await this.artworkResolver.resolve(
+        assignment.sourceRef,
+        assignment.sourceFingerprint,
+      );
       await this.modal(`替换 ${source.entry.name}`, async (context) => {
         ensureModalNotCancelled(context, cancellation);
         const workDocument = documentById(this.runtime, resolved.documentId);
         this.runtime.app.activeDocument = workDocument;
         await this.selectLayer(workDocument.id, source.layerId);
-        const beforeDocuments = new Set(this.runtime.app.documents.map((document) => document.id));
+        const beforeDocuments = new Set(
+          this.runtime.app.documents.map((document) => document.id),
+        );
         const openResults = await this.runtime.action.batchPlay(
           [
             {
@@ -582,9 +748,13 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
           {},
         );
         assertBatchPlayResults(openResults, "打开智能对象内容");
-        const opened = this.runtime.app.documents.filter((document) => !beforeDocuments.has(document.id));
+        const opened = this.runtime.app.documents.filter(
+          (document) => !beforeDocuments.has(document.id),
+        );
         if (opened.length !== 1) {
-          throw new Error("智能对象内容未打开为唯一的新文档，已打开内容或复杂嵌套需要单独验证");
+          throw new Error(
+            "智能对象内容未打开为唯一的新文档，已打开内容或复杂嵌套需要单独验证",
+          );
         }
         const contentDocument = opened[0];
         scope.documents.contentDocumentIds.push(contentDocument.id);
@@ -593,29 +763,59 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
           (layer) => layer.name === source.entry.replacementLayerName,
         );
         if (replacementLayers.length !== 1) {
-          throw new Error(`智能对象顶层必须有且仅有一个 ${source.entry.replacementLayerName} 图层`);
+          throw new Error(
+            `智能对象顶层必须有且仅有一个 ${source.entry.replacementLayerName} 图层`,
+          );
         }
         const oldLayer = replacementLayers[0];
         if (source.entry.fit.mode === "contain") {
-          throw new Error("完整放入的背景渲染尚未通过 M0 验证，真实 Photoshop 入口暂不支持");
+          throw new Error(
+            "完整放入的背景渲染尚未通过 M0 验证，真实 Photoshop 入口暂不支持",
+          );
         }
-        const documentWidth = numberValue(contentDocument.width, "智能对象画布宽度");
-        const documentHeight = numberValue(contentDocument.height, "智能对象画布高度");
-        if (documentWidth !== source.entry.canvas.width || documentHeight !== source.entry.canvas.height) {
+        const documentWidth = numberValue(
+          contentDocument.width,
+          "智能对象画布宽度",
+        );
+        const documentHeight = numberValue(
+          contentDocument.height,
+          "智能对象画布高度",
+        );
+        if (
+          documentWidth !== source.entry.canvas.width ||
+          documentHeight !== source.entry.canvas.height
+        ) {
           throw new Error("智能对象内部画布与登记尺寸不一致");
         }
         const smartObjectKind = this.runtime.constants.LayerKind?.SMARTOBJECT;
         for (const layer of contentDocument.layers) {
           if (layer.layers && layer.layers.length > 0) {
-            throw new Error("智能对象内容包含未验证的嵌套图层组，已在置入素材前阻止");
+            throw new Error(
+              "智能对象内容包含未验证的嵌套图层组，已在置入素材前阻止",
+            );
           }
-          if (layer !== oldLayer && smartObjectKind !== undefined && layer.kind === smartObjectKind) {
-            throw new Error("智能对象内容包含额外嵌套智能对象，已在置入素材前阻止");
+          if (
+            layer !== oldLayer &&
+            smartObjectKind !== undefined &&
+            layer.kind === smartObjectKind
+          ) {
+            throw new Error(
+              "智能对象内容包含额外嵌套智能对象，已在置入素材前阻止",
+            );
           }
         }
-        const oldLayerDescriptor = await this.layerDescriptor(contentDocument.id, oldLayer.id);
-        assertSimpleReplacementLayer(oldLayerDescriptor, source.entry.replacementLayerName);
-        if (smartObjectKind !== undefined && oldLayer.kind === smartObjectKind) {
+        const oldLayerDescriptor = await this.layerDescriptor(
+          contentDocument.id,
+          oldLayer.id,
+        );
+        assertSimpleReplacementLayer(
+          oldLayerDescriptor,
+          source.entry.replacementLayerName,
+        );
+        if (
+          smartObjectKind !== undefined &&
+          oldLayer.kind === smartObjectKind
+        ) {
           descriptorSourceIdentity(oldLayerDescriptor);
         }
         const fixedLayerSignature = contentDocument.layers
@@ -623,8 +823,11 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
           .map((layer) => `${layer.id}:${layer.name}:${String(layer.kind)}`)
           .join("|");
         await this.selectLayer(contentDocument.id, oldLayer.id);
-        const existingLayerIds = new Set(contentDocument.layers.map((layer) => layer.id));
-        const token = this.runtime.localFileSystem.createSessionToken(artworkFile);
+        const existingLayerIds = new Set(
+          contentDocument.layers.map((layer) => layer.id),
+        );
+        const token =
+          this.runtime.localFileSystem.createSessionToken(artworkFile);
         const placeResults = await this.runtime.action.batchPlay(
           [
             {
@@ -638,15 +841,27 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
         );
         assertBatchPlayResults(placeResults, "置入印花素材");
         ensureModalNotCancelled(context, cancellation);
-        const placedLayers = contentDocument.layers.filter((layer) => !existingLayerIds.has(layer.id));
-        if (placedLayers.length !== 1) throw new Error("置入素材后无法唯一识别新图层");
+        const placedLayers = contentDocument.layers.filter(
+          (layer) => !existingLayerIds.has(layer.id),
+        );
+        if (placedLayers.length !== 1)
+          throw new Error("置入素材后无法唯一识别新图层");
         const placedLayer = placedLayers[0];
-        if (!placedLayer.boundsNoEffects || !placedLayer.scale || !placedLayer.translate) {
+        if (
+          !placedLayer.boundsNoEffects ||
+          !placedLayer.scale ||
+          !placedLayer.translate
+        ) {
           throw new Error("当前 Photoshop 无法读取或变换置入素材边界");
         }
-        const transform = calculateFitTransform(placedLayer.boundsNoEffects, source.entry.canvas, source.entry.fit);
+        const transform = calculateFitTransform(
+          placedLayer.boundsNoEffects,
+          source.entry.canvas,
+          source.entry.fit,
+        );
         await placedLayer.scale(transform.scalePercent, transform.scalePercent);
-        if (!placedLayer.boundsNoEffects) throw new Error("缩放后无法重读素材边界");
+        if (!placedLayer.boundsNoEffects)
+          throw new Error("缩放后无法重读素材边界");
         const currentCenterX =
           (numberValue(placedLayer.boundsNoEffects.left, "素材左边界") +
             numberValue(placedLayer.boundsNoEffects.right, "素材右边界")) /
@@ -659,13 +874,15 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
           transform.targetCenterX - currentCenterX,
           transform.targetCenterY - currentCenterY,
         );
-        const placeBefore = this.runtime.constants.ElementPlacement?.PLACEBEFORE;
+        const placeBefore =
+          this.runtime.constants.ElementPlacement?.PLACEBEFORE;
         if (!placedLayer.move || placeBefore === undefined) {
           throw new Error("当前 Photoshop 无法把新素材移动到原替换层位置");
         }
         await placedLayer.move(oldLayer, placeBefore);
         placedLayer.name = source.entry.replacementLayerName;
-        if (!oldLayer.delete) throw new Error("当前 Photoshop 不支持删除旧素材层");
+        if (!oldLayer.delete)
+          throw new Error("当前 Photoshop 不支持删除旧素材层");
         await oldLayer.delete();
         const fixedLayerAfter = contentDocument.layers
           .filter((layer) => layer !== placedLayer)
@@ -674,12 +891,14 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
         if (fixedLayerAfter !== fixedLayerSignature) {
           throw new Error("置入素材时非替换图层的结构或顺序发生变化");
         }
-        if (!contentDocument.save) throw new Error("当前 Photoshop 不支持保存智能对象内容");
+        if (!contentDocument.save)
+          throw new Error("当前 Photoshop 不支持保存智能对象内容");
         await contentDocument.save();
         await closeDocument(contentDocument);
-        scope.documents.contentDocumentIds = scope.documents.contentDocumentIds.filter(
-          (documentId) => Number(documentId) !== contentDocument.id,
-        );
+        scope.documents.contentDocumentIds =
+          scope.documents.contentDocumentIds.filter(
+            (documentId) => Number(documentId) !== contentDocument.id,
+          );
       });
     }
   }
@@ -694,7 +913,10 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
       ensureModalNotCancelled(context, cancellation);
       const baseline = this.resolvedScopes.get(scope.scopeId);
       if (!baseline) throw new Error("缺少替换前结构基线");
-      const document = documentById(this.runtime, Number(scope.documents.workCopyDocumentId));
+      const document = documentById(
+        this.runtime,
+        Number(scope.documents.workCopyDocumentId),
+      );
       const current = await this.resolveDocumentTemplate(document, template);
       if (current.structureSignature !== baseline.structureSignature) {
         throw new Error("替换后智能对象路径、图层 ID 或共享关系发生变化");
@@ -737,7 +959,12 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
     ensureNotCancelled(cancellation);
     return this.modal("重读并验证全部输出", async (context) => {
       ensureModalNotCancelled(context, cancellation);
-      return this.outputPort.verifyOutput(scope, output, taskFingerprint, context.hostControl);
+      return this.outputPort.verifyOutput(
+        scope,
+        output,
+        taskFingerprint,
+        context.hostControl,
+      );
     });
   }
 
@@ -757,7 +984,9 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
     try {
       await this.outputPort.cleanup(scope);
     } catch (error) {
-      errors.push(error instanceof Error ? error.message : "输出临时文件清理失败");
+      errors.push(
+        error instanceof Error ? error.message : "输出临时文件清理失败",
+      );
     }
     try {
       await this.modal("清理插件临时文档", async () => {
@@ -768,7 +997,9 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
         ];
         const failedIds: Array<string | number> = [];
         for (const documentId of ownedIds) {
-          const document = this.runtime.app.documents.find((candidate) => candidate.id === Number(documentId));
+          const document = this.runtime.app.documents.find(
+            (candidate) => candidate.id === Number(documentId),
+          );
           if (!document) continue;
           try {
             await closeDocument(document);
@@ -780,24 +1011,36 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
             );
           }
         }
-        scope.documents.contentDocumentIds = scope.documents.contentDocumentIds.filter((id) =>
-          failedIds.some((failed) => Number(failed) === Number(id)),
-        );
-        if (!failedIds.some((id) => Number(id) === Number(scope.documents.workCopyDocumentId))) {
+        scope.documents.contentDocumentIds =
+          scope.documents.contentDocumentIds.filter((id) =>
+            failedIds.some((failed) => Number(failed) === Number(id)),
+          );
+        if (
+          !failedIds.some(
+            (id) => Number(id) === Number(scope.documents.workCopyDocumentId),
+          )
+        ) {
           scope.documents.workCopyDocumentId = undefined;
         }
-        if (!failedIds.some((id) => Number(id) === Number(scope.documents.masterDocumentId))) {
+        if (
+          !failedIds.some(
+            (id) => Number(id) === Number(scope.documents.masterDocumentId),
+          )
+        ) {
           scope.documents.masterDocumentId = undefined;
         }
       });
     } catch (error) {
       requiresManualReview = true;
-      errors.push(error instanceof Error ? error.message : "Photoshop 临时文档清理失败");
+      errors.push(
+        error instanceof Error ? error.message : "Photoshop 临时文档清理失败",
+      );
     }
     if (errors.length === 0) {
       this.resolvedScopes.delete(scope.scopeId);
       scope.temporaryLocations.length = 0;
     }
-    if (errors.length > 0) throw new ResourceCleanupError(errors.join("；"), requiresManualReview);
+    if (errors.length > 0)
+      throw new ResourceCleanupError(errors.join("；"), requiresManualReview);
   }
 }

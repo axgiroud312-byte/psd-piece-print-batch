@@ -9,8 +9,15 @@ import {
   type OutputStorage,
 } from "../src/adapters/fixed-region-output-port";
 import { samplePreflightPayload } from "../src/domain/sample";
-import type { InputGroupSnapshot, OutputTarget, TemplateConfig } from "../src/domain/types";
-import type { ExecutionScope, OutputArtifactMetadata } from "../src/workflow/types";
+import type {
+  InputGroupSnapshot,
+  OutputTarget,
+  TemplateConfig,
+} from "../src/domain/types";
+import type {
+  ExecutionScope,
+  OutputArtifactMetadata,
+} from "../src/workflow/types";
 import { fingerprintValue } from "../src/workflow/fingerprint";
 
 const encoder = new TextEncoder();
@@ -44,7 +51,8 @@ class MemoryOutputStorage implements OutputStorage {
   }
 
   async writeFile(location: string, bytes: Uint8Array): Promise<void> {
-    if (!this.directories.has(parentOf(location))) throw new Error(`父目录不存在：${location}`);
+    if (!this.directories.has(parentOf(location)))
+      throw new Error(`父目录不存在：${location}`);
     this.files.set(location, Uint8Array.from(bytes));
   }
 
@@ -61,19 +69,31 @@ class MemoryOutputStorage implements OutputStorage {
   async listFiles(location: string): Promise<string[]> {
     const prefix = `${location}/`;
     return [...this.files.keys()]
-      .filter((candidate) => candidate.startsWith(prefix) && !candidate.slice(prefix.length).includes("/"))
+      .filter(
+        (candidate) =>
+          candidate.startsWith(prefix) &&
+          !candidate.slice(prefix.length).includes("/"),
+      )
       .map((candidate) => candidate.slice(prefix.length));
   }
 
-  async promoteDirectoryExclusive(temporaryLocation: string, finalLocation: string): Promise<void> {
+  async promoteDirectoryExclusive(
+    temporaryLocation: string,
+    finalLocation: string,
+  ): Promise<void> {
     if (this.promoteFailure) throw new Error("原子提升失败");
-    if (await this.exists(finalLocation)) throw new Error(`目标已存在：${finalLocation}`);
-    if (!this.directories.has(temporaryLocation)) throw new Error("暂存目录不存在");
+    if (await this.exists(finalLocation))
+      throw new Error(`目标已存在：${finalLocation}`);
+    if (!this.directories.has(temporaryLocation))
+      throw new Error("暂存目录不存在");
     this.directories.add(finalLocation);
     const prefix = `${temporaryLocation}/`;
     for (const [location, bytes] of [...this.files]) {
       if (!location.startsWith(prefix)) continue;
-      this.files.set(`${finalLocation}/${location.slice(prefix.length)}`, bytes);
+      this.files.set(
+        `${finalLocation}/${location.slice(prefix.length)}`,
+        bytes,
+      );
       this.files.delete(location);
     }
     this.directories.delete(temporaryLocation);
@@ -96,8 +116,10 @@ function metadataFor(target: OutputTarget): OutputArtifactMetadata {
     ppi: target.profile.ppi,
     colorMode: target.profile.colorMode,
     bitDepth: target.profile.bitDepth,
-    iccProfile: target.profile.icc.mode === "embed" ? target.profile.icc.profile : null,
-    background: target.profile.background.kind === "solid" ? "opaque" : "transparent",
+    iccProfile:
+      target.profile.icc.mode === "embed" ? target.profile.icc.profile : null,
+    background:
+      target.profile.background.kind === "solid" ? "opaque" : "transparent",
     includesGuides: target.profile.includeGuides,
   };
 }
@@ -110,20 +132,28 @@ function capability(): OutputCapabilityGate {
     pluginVersion: "0.1.0",
     implementationVersion: OUTPUT_IMPLEMENTATION_VERSION,
     storageScopeId: "memory-output",
-    documentSpecFingerprint: fingerprintValue(samplePreflightPayload.template.document),
-    outputConfigFingerprint: fingerprintValue(samplePreflightPayload.template.output),
+    documentSpecFingerprint: fingerprintValue(
+      samplePreflightPayload.template.document,
+    ),
+    outputConfigFingerprint: fingerprintValue(
+      samplePreflightPayload.template.output,
+    ),
     masterFingerprints: [samplePreflightPayload.template.masterFingerprint],
     validatedSourceSetFingerprints: [sampleSourceSetFingerprint()],
     combinations: [
       {
-        profile: structuredClone(samplePreflightPayload.template.output.preview.profile),
+        profile: structuredClone(
+          samplePreflightPayload.template.output.preview.profile,
+        ),
         maxWidth: 6000,
         maxHeight: 6000,
         maxEstimatedBytes: 200_000_000,
         maxFileBytes: 200_000_000,
       },
       {
-        profile: structuredClone(samplePreflightPayload.template.output.production[0].profile),
+        profile: structuredClone(
+          samplePreflightPayload.template.output.production[0].profile,
+        ),
         maxWidth: 6000,
         maxHeight: 6000,
         maxEstimatedBytes: 200_000_000,
@@ -136,7 +166,10 @@ function capability(): OutputCapabilityGate {
 function sampleSourceSetFingerprint(): string {
   return fingerprintValue(
     samplePreflightPayload.groups[0].files
-      .map((file) => ({ name: file.name, fingerprint: file.fingerprint as string }))
+      .map((file) => ({
+        name: file.name,
+        fingerprint: file.fingerprint as string,
+      }))
       .sort((left, right) => left.name.localeCompare(right.name)),
   );
 }
@@ -158,19 +191,40 @@ function exportOutputs(
   template: TemplateConfig = samplePreflightPayload.template,
   group: InputGroupSnapshot = samplePreflightPayload.groups[0],
 ) {
-  return port.exportOutputs(currentScope, template, group, 42, "0.1.0", "25.0.0");
+  return port.exportOutputs(
+    currentScope,
+    template,
+    group,
+    42,
+    "0.1.0",
+    "25.0.0",
+  );
 }
 
 function setup() {
   const storage = new MemoryOutputStorage();
   const metadataOverrides = new Map<string, Partial<OutputArtifactMetadata>>();
-  const render = vi.fn(async (_documentId: number, target: OutputTarget, _kind: string, destination: string) => {
-    const metadata = { ...metadataFor(target), ...metadataOverrides.get(target.fileName) };
-    await storage.writeFile(destination, encoder.encode(JSON.stringify(metadata)));
-  });
+  const render = vi.fn(
+    async (
+      _documentId: number,
+      target: OutputTarget,
+      _kind: string,
+      destination: string,
+    ) => {
+      const metadata = {
+        ...metadataFor(target),
+        ...metadataOverrides.get(target.fileName),
+      };
+      await storage.writeFile(
+        destination,
+        encoder.encode(JSON.stringify(metadata)),
+      );
+    },
+  );
   const renderer: FixedRegionRenderer = {
     render,
-    inspect: async (bytes) => JSON.parse(decoder.decode(bytes)) as OutputArtifactMetadata,
+    inspect: async (bytes) =>
+      JSON.parse(decoder.decode(bytes)) as OutputArtifactMetadata,
   };
   const port = new FixedRegionOutputPort({
     outputRoot: "C:/输出",
@@ -192,7 +246,11 @@ describe("fixed-region output transaction", () => {
 
     const draft = await exportOutputs(port, currentScope, template, group);
     expect(storage.writableChecks[0]).toContain("/.staging-");
-    const verified = await port.verifyOutput(currentScope, draft, "task-fingerprint");
+    const verified = await port.verifyOutput(
+      currentScope,
+      draft,
+      "task-fingerprint",
+    );
     const committed = await port.commitResult(currentScope, verified);
     await port.cleanup(currentScope);
 
@@ -201,15 +259,26 @@ describe("fixed-region output transaction", () => {
     expect(render.mock.calls[0][2]).toBe("preview");
     expect(render.mock.calls[1][1]).toEqual(template.output.production[0]);
     expect(render.mock.calls[1][2]).toBe("production");
-    expect(template.output.preview.profile).not.toEqual(template.output.production[0].profile);
+    expect(template.output.preview.profile).not.toEqual(
+      template.output.production[0].profile,
+    );
     expect(verified.artifacts).toHaveLength(6);
-    expect(verified.artifacts[verified.artifacts.length - 1].name).toBe("result.json");
+    expect(verified.artifacts[verified.artifacts.length - 1].name).toBe(
+      "result.json",
+    );
     expect(committed.location).toBe("C:/输出/run-001/款式001-蓝花");
     expect(await storage.exists(committed.location)).toBe(true);
     expect(await storage.exists(draft.temporaryLocation)).toBe(false);
     expect(await storage.listFiles(committed.location)).toHaveLength(6);
-    const report = JSON.parse(decoder.decode(await storage.readFile(`${committed.location}/result.json`)));
-    expect(report).toMatchObject({ status: "verified", taskFingerprint: "task-fingerprint" });
+    const report = JSON.parse(
+      decoder.decode(
+        await storage.readFile(`${committed.location}/result.json`),
+      ),
+    );
+    expect(report).toMatchObject({
+      status: "verified",
+      taskFingerprint: "task-fingerprint",
+    });
     expect(report.audit).toMatchObject({
       templateId: template.templateId,
       masterFingerprint: template.masterFingerprint,
@@ -222,11 +291,16 @@ describe("fixed-region output transaction", () => {
 
   it("fails closed before writes when output capability is unverified", async () => {
     const { storage, renderer } = setup();
-    const port = new FixedRegionOutputPort({ outputRoot: "C:/输出", storageScopeId: "memory-output", storage, renderer });
+    const port = new FixedRegionOutputPort({
+      outputRoot: "C:/输出",
+      storageScopeId: "memory-output",
+      storage,
+      renderer,
+    });
 
-    await expect(
-      exportOutputs(port, scope()),
-    ).rejects.toBeInstanceOf(OutputCapabilityError);
+    await expect(exportOutputs(port, scope())).rejects.toBeInstanceOf(
+      OutputCapabilityError,
+    );
     expect(storage.directories.size).toBe(0);
   });
 
@@ -240,7 +314,12 @@ describe("fixed-region output transaction", () => {
       capability: capability(),
     });
     await expect(
-      oldPluginPort.preflight("run-001", samplePreflightPayload.template, samplePreflightPayload.groups[0], "0.2.0"),
+      oldPluginPort.preflight(
+        "run-001",
+        samplePreflightPayload.template,
+        samplePreflightPayload.groups[0],
+        "0.2.0",
+      ),
     ).rejects.toThrow("插件或输出实现版本");
 
     const oldImplementation = capability();
@@ -268,9 +347,14 @@ describe("fixed-region output transaction", () => {
     const changedGroup = structuredClone(samplePreflightPayload.groups[0]);
     changedGroup.files[0].fingerprint = "new-unvalidated-raster-content";
 
-    await expect(port.preflight("run-001", samplePreflightPayload.template, changedGroup, "0.1.0")).rejects.toThrow(
-      "当前素材集合未通过",
-    );
+    await expect(
+      port.preflight(
+        "run-001",
+        samplePreflightPayload.template,
+        changedGroup,
+        "0.1.0",
+      ),
+    ).rejects.toThrow("当前素材集合未通过");
     expect(render).not.toHaveBeenCalled();
     expect(storage.directories.size).toBe(0);
   });
@@ -287,7 +371,12 @@ describe("fixed-region output transaction", () => {
       capability: invalid,
     });
     await expect(
-      invalidPort.preflight("run-001", samplePreflightPayload.template, samplePreflightPayload.groups[0], "0.1.0"),
+      invalidPort.preflight(
+        "run-001",
+        samplePreflightPayload.template,
+        samplePreflightPayload.groups[0],
+        "0.1.0",
+      ),
     ).rejects.toThrow("无效或无限制");
 
     const staging = `C:/输出/run-001/.staging-${fingerprintValue({
@@ -308,7 +397,12 @@ describe("fixed-region output transaction", () => {
       capability: capability(),
     });
     await expect(
-      currentPort.preflight("run-001", samplePreflightPayload.template, samplePreflightPayload.groups[0], "0.1.0"),
+      currentPort.preflight(
+        "run-001",
+        samplePreflightPayload.template,
+        samplePreflightPayload.groups[0],
+        "0.1.0",
+      ),
     ).rejects.toThrow("暂存目录冲突");
     expect(render).not.toHaveBeenCalled();
   });
@@ -336,7 +430,9 @@ describe("fixed-region output transaction", () => {
     };
     template.output.production.push(editable);
     const currentCapability = capability();
-    currentCapability.outputConfigFingerprint = fingerprintValue(template.output);
+    currentCapability.outputConfigFingerprint = fingerprintValue(
+      template.output,
+    );
     currentCapability.combinations.push({
       profile: structuredClone(editable.profile),
       maxWidth: 10_000,
@@ -352,16 +448,25 @@ describe("fixed-region output transaction", () => {
       capability: currentCapability,
     });
 
-    await expect(port.preflight("run-001", template, samplePreflightPayload.groups[0], "0.1.0")).rejects.toThrow(
-      "大文件限制",
-    );
+    await expect(
+      port.preflight(
+        "run-001",
+        template,
+        samplePreflightPayload.groups[0],
+        "0.1.0",
+      ),
+    ).rejects.toThrow("大文件限制");
     expect(render).not.toHaveBeenCalled();
     expect(storage.directories.size).toBe(0);
 
     const changedGroup = structuredClone(samplePreflightPayload.groups[0]);
     changedGroup.files[0].fingerprint = "different-layered-source";
-    template.output.production[template.output.production.length - 1].maximumFileBytes = 200_000_000;
-    currentCapability.outputConfigFingerprint = fingerprintValue(template.output);
+    template.output.production[
+      template.output.production.length - 1
+    ].maximumFileBytes = 200_000_000;
+    currentCapability.outputConfigFingerprint = fingerprintValue(
+      template.output,
+    );
     const sourceLockedPort = new FixedRegionOutputPort({
       outputRoot: "C:/输出",
       storageScopeId: "memory-output",
@@ -369,34 +474,56 @@ describe("fixed-region output transaction", () => {
       renderer,
       capability: currentCapability,
     });
-    await expect(sourceLockedPort.preflight("run-001", template, changedGroup, "0.1.0")).rejects.toThrow(
-      "当前素材集合未通过",
-    );
+    await expect(
+      sourceLockedPort.preflight("run-001", template, changedGroup, "0.1.0"),
+    ).rejects.toThrow("当前素材集合未通过");
   });
 
   it("blocks unsupported combinations and large outputs before creating a staging directory", async () => {
     const { storage, renderer } = setup();
     const unsupported = capability();
-    unsupported.combinations = unsupported.combinations.filter((item) => item.profile.format !== "jpeg");
-    const unsupportedPort = new FixedRegionOutputPort({ outputRoot: "C:/输出", storageScopeId: "memory-output", storage, renderer, capability: unsupported });
-    await expect(
-      exportOutputs(unsupportedPort, scope()),
-    ).rejects.toThrow("输出组合未通过 M0");
+    unsupported.combinations = unsupported.combinations.filter(
+      (item) => item.profile.format !== "jpeg",
+    );
+    const unsupportedPort = new FixedRegionOutputPort({
+      outputRoot: "C:/输出",
+      storageScopeId: "memory-output",
+      storage,
+      renderer,
+      capability: unsupported,
+    });
+    await expect(exportOutputs(unsupportedPort, scope())).rejects.toThrow(
+      "输出组合未通过 M0",
+    );
 
     const changedProfile = structuredClone(samplePreflightPayload.template);
     changedProfile.output.preview.profile.ppi = 96;
     const exactCapability = capability();
-    exactCapability.outputConfigFingerprint = fingerprintValue(changedProfile.output);
-    const exactPort = new FixedRegionOutputPort({ outputRoot: "C:/输出", storageScopeId: "memory-output", storage, renderer, capability: exactCapability });
-    await expect(exportOutputs(exactPort, scope(), changedProfile)).rejects.toThrow(
-      "输出组合未通过 M0",
+    exactCapability.outputConfigFingerprint = fingerprintValue(
+      changedProfile.output,
     );
+    const exactPort = new FixedRegionOutputPort({
+      outputRoot: "C:/输出",
+      storageScopeId: "memory-output",
+      storage,
+      renderer,
+      capability: exactCapability,
+    });
+    await expect(
+      exportOutputs(exactPort, scope(), changedProfile),
+    ).rejects.toThrow("输出组合未通过 M0");
 
     const tooLarge = structuredClone(samplePreflightPayload.template);
     tooLarge.output.preview.region.width = 6001;
     const largeCapability = capability();
     largeCapability.outputConfigFingerprint = fingerprintValue(tooLarge.output);
-    const largePort = new FixedRegionOutputPort({ outputRoot: "C:/输出", storageScopeId: "memory-output", storage, renderer, capability: largeCapability });
+    const largePort = new FixedRegionOutputPort({
+      outputRoot: "C:/输出",
+      storageScopeId: "memory-output",
+      storage,
+      renderer,
+      capability: largeCapability,
+    });
     await expect(exportOutputs(largePort, scope(), tooLarge)).rejects.toThrow(
       "大文件限制",
     );
@@ -406,9 +533,12 @@ describe("fixed-region output transaction", () => {
   it("blocks filename and existing-result collisions without writing", async () => {
     const { storage, renderer, render, port } = setup();
     const conflicting = structuredClone(samplePreflightPayload.template);
-    conflicting.output.production[0].fileName = conflicting.output.preview.fileName;
+    conflicting.output.production[0].fileName =
+      conflicting.output.preview.fileName;
     const collisionCapability = capability();
-    collisionCapability.outputConfigFingerprint = fingerprintValue(conflicting.output);
+    collisionCapability.outputConfigFingerprint = fingerprintValue(
+      conflicting.output,
+    );
     const collisionPort = new FixedRegionOutputPort({
       outputRoot: "C:/输出",
       storageScopeId: "memory-output",
@@ -416,14 +546,12 @@ describe("fixed-region output transaction", () => {
       renderer,
       capability: collisionCapability,
     });
-    await expect(exportOutputs(collisionPort, scope(), conflicting)).rejects.toThrow(
-      "输出文件名冲突",
-    );
+    await expect(
+      exportOutputs(collisionPort, scope(), conflicting),
+    ).rejects.toThrow("输出文件名冲突");
 
     storage.directories.add("C:/输出/run-001/款式001-蓝花");
-    await expect(
-      exportOutputs(port, scope()),
-    ).rejects.toThrow("禁止覆盖");
+    await expect(exportOutputs(port, scope())).rejects.toThrow("禁止覆盖");
     expect(render).not.toHaveBeenCalled();
   });
 
@@ -433,7 +561,9 @@ describe("fixed-region output transaction", () => {
     const currentScope = scope();
     const draft = await exportOutputs(port, currentScope);
 
-    await expect(port.verifyOutput(currentScope, draft, "task")).rejects.toThrow("width 应为 2400，实际为 1");
+    await expect(
+      port.verifyOutput(currentScope, draft, "task"),
+    ).rejects.toThrow("width 应为 2400，实际为 1");
     expect(await storage.exists(draft.finalLocation)).toBe(false);
     await port.cleanup(currentScope);
     expect(await storage.exists(draft.temporaryLocation)).toBe(false);
@@ -444,7 +574,9 @@ describe("fixed-region output transaction", () => {
     metadataOverrides.set("预览.jpg", { ppi: Number.NaN });
     const currentScope = scope();
     const draft = await exportOutputs(port, currentScope);
-    await expect(port.verifyOutput(currentScope, draft, "task")).rejects.toThrow("必要元数据无效或缺失");
+    await expect(
+      port.verifyOutput(currentScope, draft, "task"),
+    ).rejects.toThrow("必要元数据无效或缺失");
     await port.cleanup(currentScope);
   });
 
@@ -452,11 +584,21 @@ describe("fixed-region output transaction", () => {
     const { storage, port } = setup();
     const currentScope = scope();
     const draft = await exportOutputs(port, currentScope);
-    await storage.writeFile(`${draft.temporaryLocation}/意外文件.png`, encoder.encode("extra"));
-    await expect(port.verifyOutput(currentScope, draft, "task")).rejects.toThrow("数量或名称");
+    await storage.writeFile(
+      `${draft.temporaryLocation}/意外文件.png`,
+      encoder.encode("extra"),
+    );
+    await expect(
+      port.verifyOutput(currentScope, draft, "task"),
+    ).rejects.toThrow("数量或名称");
     storage.files.delete(`${draft.temporaryLocation}/意外文件.png`);
-    await storage.writeFile(`${draft.temporaryLocation}/${draft.expectedArtifacts[0].name}`, encoder.encode("not-json"));
-    await expect(port.verifyOutput(currentScope, draft, "task")).rejects.toThrow();
+    await storage.writeFile(
+      `${draft.temporaryLocation}/${draft.expectedArtifacts[0].name}`,
+      encoder.encode("not-json"),
+    );
+    await expect(
+      port.verifyOutput(currentScope, draft, "task"),
+    ).rejects.toThrow();
     await port.cleanup(currentScope);
   });
 
@@ -466,10 +608,19 @@ describe("fixed-region output transaction", () => {
     const draft = await exportOutputs(port, currentScope);
     const verified = await port.verifyOutput(currentScope, draft, "task");
     storage.directories.add(draft.finalLocation);
-    await storage.writeFile(`${draft.finalLocation}/已有结果.txt`, encoder.encode("keep"));
+    await storage.writeFile(
+      `${draft.finalLocation}/已有结果.txt`,
+      encoder.encode("keep"),
+    );
 
-    await expect(port.commitResult(currentScope, verified)).rejects.toThrow("禁止覆盖");
-    expect(decoder.decode(await storage.readFile(`${draft.finalLocation}/已有结果.txt`))).toBe("keep");
+    await expect(port.commitResult(currentScope, verified)).rejects.toThrow(
+      "禁止覆盖",
+    );
+    expect(
+      decoder.decode(
+        await storage.readFile(`${draft.finalLocation}/已有结果.txt`),
+      ),
+    ).toBe("keep");
     await port.cleanup(currentScope);
     expect(await storage.exists(draft.temporaryLocation)).toBe(false);
   });
@@ -479,9 +630,14 @@ describe("fixed-region output transaction", () => {
     const currentScope = scope();
     const draft = await exportOutputs(port, currentScope);
     const verified = await port.verifyOutput(currentScope, draft, "task");
-    await storage.writeFile(`${draft.temporaryLocation}/${verified.artifacts[0].name}`, encoder.encode("changed"));
+    await storage.writeFile(
+      `${draft.temporaryLocation}/${verified.artifacts[0].name}`,
+      encoder.encode("changed"),
+    );
 
-    await expect(port.commitResult(currentScope, verified)).rejects.toThrow("验证后输出文件发生变化");
+    await expect(port.commitResult(currentScope, verified)).rejects.toThrow(
+      "验证后输出文件发生变化",
+    );
     expect(await storage.exists(draft.finalLocation)).toBe(false);
     await port.cleanup(currentScope);
   });
@@ -490,9 +646,9 @@ describe("fixed-region output transaction", () => {
     const { storage, render, port } = setup();
     render.mockRejectedValueOnce(new Error("磁盘写入失败"));
     const failedScope = scope();
-    await expect(
-      exportOutputs(port, failedScope),
-    ).rejects.toThrow("磁盘写入失败");
+    await expect(exportOutputs(port, failedScope)).rejects.toThrow(
+      "磁盘写入失败",
+    );
     expect(failedScope.temporaryLocations).toHaveLength(2);
     await port.cleanup(failedScope);
     expect(failedScope.temporaryLocations).toHaveLength(0);
@@ -502,7 +658,9 @@ describe("fixed-region output transaction", () => {
     const draft = await exportOutputs(next.port, nextScope);
     const verified = await next.port.verifyOutput(nextScope, draft, "task");
     next.storage.promoteFailure = true;
-    await expect(next.port.commitResult(nextScope, verified)).rejects.toThrow("原子提升失败");
+    await expect(next.port.commitResult(nextScope, verified)).rejects.toThrow(
+      "原子提升失败",
+    );
     expect(await next.storage.exists(draft.temporaryLocation)).toBe(true);
     expect(await next.storage.exists(draft.finalLocation)).toBe(false);
     await next.port.cleanup(nextScope);
@@ -512,25 +670,41 @@ describe("fixed-region output transaction", () => {
     const { storage, port } = setup();
     const currentScope = scope();
     const draft = await exportOutputs(port, currentScope);
-    const verified = await port.verifyOutput(currentScope, draft, currentScope.taskFingerprint);
+    const verified = await port.verifyOutput(
+      currentScope,
+      draft,
+      currentScope.taskFingerprint,
+    );
     const committed = await port.commitResult(currentScope, verified);
 
-    await expect(port.reconcileCommittedOutput({
-      runId: currentScope.runId,
-      groupName: samplePreflightPayload.groups[0].name,
-      taskFingerprint: currentScope.taskFingerprint,
-    })).resolves.toMatchObject({ status: "completed", output: { location: committed.location } });
-    await expect(port.reconcileCommittedOutput({
-      runId: currentScope.runId,
-      groupName: samplePreflightPayload.groups[0].name,
-      taskFingerprint: "different-task",
-    })).resolves.toMatchObject({ status: "conflict" });
-    await storage.writeFile(`${committed.location}/${verified.artifacts[0].name}`, encoder.encode("changed-after-commit"));
-    await expect(port.reconcileCommittedOutput({
-      runId: currentScope.runId,
-      groupName: samplePreflightPayload.groups[0].name,
-      taskFingerprint: currentScope.taskFingerprint,
-    })).resolves.toMatchObject({ status: "conflict" });
+    await expect(
+      port.reconcileCommittedOutput({
+        runId: currentScope.runId,
+        groupName: samplePreflightPayload.groups[0].name,
+        taskFingerprint: currentScope.taskFingerprint,
+      }),
+    ).resolves.toMatchObject({
+      status: "completed",
+      output: { location: committed.location },
+    });
+    await expect(
+      port.reconcileCommittedOutput({
+        runId: currentScope.runId,
+        groupName: samplePreflightPayload.groups[0].name,
+        taskFingerprint: "different-task",
+      }),
+    ).resolves.toMatchObject({ status: "conflict" });
+    await storage.writeFile(
+      `${committed.location}/${verified.artifacts[0].name}`,
+      encoder.encode("changed-after-commit"),
+    );
+    await expect(
+      port.reconcileCommittedOutput({
+        runId: currentScope.runId,
+        groupName: samplePreflightPayload.groups[0].name,
+        taskFingerprint: currentScope.taskFingerprint,
+      }),
+    ).resolves.toMatchObject({ status: "conflict" });
     const committedOwnership = `${committed.location}/.psd-batch-owner.json`;
     expect(await storage.exists(draft.ownershipLocation!)).toBe(false);
     expect(await storage.exists(committedOwnership)).toBe(true);
@@ -550,7 +724,12 @@ describe("fixed-region output transaction", () => {
       attemptId: currentScope.attemptId,
     };
 
-    await expect(port.cleanupOwnedTemporary({ ...recovery, taskFingerprint: "not-the-owner" })).resolves.toBe("preserved");
+    await expect(
+      port.cleanupOwnedTemporary({
+        ...recovery,
+        taskFingerprint: "not-the-owner",
+      }),
+    ).resolves.toBe("preserved");
     expect(await storage.exists(draft.temporaryLocation)).toBe(true);
     expect(await storage.exists(draft.ownershipLocation!)).toBe(true);
 
@@ -566,13 +745,17 @@ describe("fixed-region output transaction", () => {
     await storage.removeDirectory(draft.temporaryLocation);
     await storage.createExclusiveDirectory(draft.temporaryLocation);
 
-    await expect(port.cleanup(currentScope)).rejects.toThrow("无法证明暂存目录属于当前执行");
-    await expect(port.cleanupOwnedTemporary({
-      runId: currentScope.runId,
-      groupName: samplePreflightPayload.groups[0].name,
-      taskFingerprint: currentScope.taskFingerprint,
-      attemptId: currentScope.attemptId,
-    })).resolves.toBe("preserved");
+    await expect(port.cleanup(currentScope)).rejects.toThrow(
+      "无法证明暂存目录属于当前执行",
+    );
+    await expect(
+      port.cleanupOwnedTemporary({
+        runId: currentScope.runId,
+        groupName: samplePreflightPayload.groups[0].name,
+        taskFingerprint: currentScope.taskFingerprint,
+        attemptId: currentScope.attemptId,
+      }),
+    ).resolves.toBe("preserved");
     expect(await storage.exists(draft.temporaryLocation)).toBe(true);
   });
 });

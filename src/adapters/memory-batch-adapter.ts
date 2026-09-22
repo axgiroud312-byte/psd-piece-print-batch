@@ -1,4 +1,9 @@
-import type { ArtworkAssignment, InputGroupSnapshot, OutputTarget, TemplateConfig } from "../domain/types";
+import type {
+  ArtworkAssignment,
+  InputGroupSnapshot,
+  OutputTarget,
+  TemplateConfig,
+} from "../domain/types";
 import { OperationCancelledError } from "../workflow/cancellation";
 import { fingerprintValue } from "../workflow/fingerprint";
 import type {
@@ -16,7 +21,10 @@ import type {
 
 interface MemoryScope extends ExecutionScope {
   resolved: boolean;
-  artwork: Map<string, { sourceRef: string; fingerprint: string; fileName: string }>;
+  artwork: Map<
+    string,
+    { sourceRef: string; fingerprint: string; fileName: string }
+  >;
 }
 
 function expectedMetadata(target: OutputTarget): OutputArtifactMetadata {
@@ -27,8 +35,10 @@ function expectedMetadata(target: OutputTarget): OutputArtifactMetadata {
     ppi: target.profile.ppi,
     colorMode: target.profile.colorMode,
     bitDepth: target.profile.bitDepth,
-    iccProfile: target.profile.icc.mode === "embed" ? target.profile.icc.profile : null,
-    background: target.profile.background.kind === "solid" ? "opaque" : "transparent",
+    iccProfile:
+      target.profile.icc.mode === "embed" ? target.profile.icc.profile : null,
+    background:
+      target.profile.background.kind === "solid" ? "opaque" : "transparent",
     includesGuides: target.profile.includeGuides,
   };
 }
@@ -63,7 +73,10 @@ export class MemoryBatchAdapter implements GroupExecutionAdapter {
   }
 
   get ownedTemporaryCount(): number {
-    return [...this.scopes.values()].reduce((count, scope) => count + scope.temporaryLocations.length, 0);
+    return [...this.scopes.values()].reduce(
+      (count, scope) => count + scope.temporaryLocations.length,
+      0,
+    );
   }
 
   get masterStateDigest(): string {
@@ -75,12 +88,14 @@ export class MemoryBatchAdapter implements GroupExecutionAdapter {
   }
 
   private interrupt(stage: Exclude<RunStage, "preflight">): void {
-    if (this.options.cancelAt === stage) throw new OperationCancelledError(`宿主取消：${stage}`);
+    if (this.options.cancelAt === stage)
+      throw new OperationCancelledError(`宿主取消：${stage}`);
     if (this.options.failAt === stage) throw new Error(`模拟失败：${stage}`);
   }
 
   private ensureNotCancelled(cancellation: CancellationToken): void {
-    if (cancellation.isCancellationRequested) throw new OperationCancelledError();
+    if (cancellation.isCancellationRequested)
+      throw new OperationCancelledError();
   }
 
   private memoryScope(scope: ExecutionScope): MemoryScope {
@@ -101,7 +116,11 @@ export class MemoryBatchAdapter implements GroupExecutionAdapter {
     this.ensureNotCancelled(cancellation);
   }
 
-  createScope(runId: string, attemptId: string, taskFingerprint: string): ExecutionScope {
+  createScope(
+    runId: string,
+    attemptId: string,
+    taskFingerprint: string,
+  ): ExecutionScope {
     this.sequence += 1;
     const scope: MemoryScope = {
       scopeId: `${runId}-scope-${this.sequence}`,
@@ -125,7 +144,8 @@ export class MemoryBatchAdapter implements GroupExecutionAdapter {
     this.record("copy-master");
     this.ensureNotCancelled(cancellation);
     const current = this.memoryScope(scope);
-    if (template.masterFingerprint !== this.masterFingerprint) throw new Error("母版指纹与适配器不一致");
+    if (template.masterFingerprint !== this.masterFingerprint)
+      throw new Error("母版指纹与适配器不一致");
     current.documents.masterDocumentId = `master-${this.masterFingerprint.slice(0, 8)}`;
     current.documents.workCopyDocumentId = `work-${scope.scopeId}`;
     this.interrupt("copy-master");
@@ -155,7 +175,9 @@ export class MemoryBatchAdapter implements GroupExecutionAdapter {
     if (!current.resolved) throw new Error("必须先重新解析模板");
     for (let index = 0; index < assignments.length; index += 1) {
       const assignment = assignments[index];
-      current.documents.contentDocumentIds.push(`content-${assignment.contentSourceId}-${index}`);
+      current.documents.contentDocumentIds.push(
+        `content-${assignment.contentSourceId}-${index}`,
+      );
       current.artwork.set(assignment.contentSourceId, {
         sourceRef: assignment.sourceRef,
         fingerprint: assignment.sourceFingerprint,
@@ -174,10 +196,13 @@ export class MemoryBatchAdapter implements GroupExecutionAdapter {
     this.ensureNotCancelled(cancellation);
     const current = this.memoryScope(scope);
     const requiredSources = new Set(
-      template.artworkEntries.filter((entry) => entry.required).map((entry) => entry.contentSourceId),
+      template.artworkEntries
+        .filter((entry) => entry.required)
+        .map((entry) => entry.contentSourceId),
     );
     for (const source of requiredSources) {
-      if (!current.artwork.has(source)) throw new Error(`必需内容源尚未替换：${source}`);
+      if (!current.artwork.has(source))
+        throw new Error(`必需内容源尚未替换：${source}`);
     }
     this.interrupt("validate-structure");
   }
@@ -200,7 +225,9 @@ export class MemoryBatchAdapter implements GroupExecutionAdapter {
         name: template.output.preview.fileName,
         kind: "preview",
         region: { ...template.output.preview.region },
-        visibleLayerPaths: structuredClone(template.output.preview.visibleLayerPaths),
+        visibleLayerPaths: structuredClone(
+          template.output.preview.visibleLayerPaths,
+        ),
         markLayerPaths: structuredClone(template.output.preview.markLayerPaths),
         maximumFileBytes: template.output.preview.maximumFileBytes,
         renderProfile: structuredClone(template.output.preview.profile),
@@ -234,7 +261,9 @@ export class MemoryBatchAdapter implements GroupExecutionAdapter {
         masterFingerprint: template.masterFingerprint,
         outputConfigFingerprint: fingerprintValue(template.output),
         sourceFingerprints: group.files
-          .filter((file): file is typeof file & { fingerprint: string } => Boolean(file.fingerprint))
+          .filter((file): file is typeof file & { fingerprint: string } =>
+            Boolean(file.fingerprint),
+          )
           .map((file) => ({ name: file.name, fingerprint: file.fingerprint })),
       },
     };
@@ -251,14 +280,18 @@ export class MemoryBatchAdapter implements GroupExecutionAdapter {
     this.record("verify-output");
     this.ensureNotCancelled(cancellation);
     const current = this.memoryScope(scope);
-    const artwork = [...current.artwork.entries()].sort(([left], [right]) => left.localeCompare(right));
-    const artifacts: OutputArtifact[] = output.expectedArtifacts.map((expected) => ({
-      name: expected.name,
-      kind: expected.kind,
-      fingerprint: fingerprintValue({ expected, artwork }),
-      byteLength: 1,
-      metadata: { ...expected.metadata },
-    }));
+    const artwork = [...current.artwork.entries()].sort(([left], [right]) =>
+      left.localeCompare(right),
+    );
+    const artifacts: OutputArtifact[] = output.expectedArtifacts.map(
+      (expected) => ({
+        name: expected.name,
+        kind: expected.kind,
+        fingerprint: fingerprintValue({ expected, artwork }),
+        byteLength: 1,
+        metadata: { ...expected.metadata },
+      }),
+    );
     const reportText = JSON.stringify({ taskFingerprint, artifacts });
     artifacts.push({
       name: "result.json",

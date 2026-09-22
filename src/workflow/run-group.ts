@@ -24,7 +24,9 @@ export async function runSingleGroup(
   options: RunOptions = {},
 ): Promise<GroupRunResult> {
   const now = options.now ?? (() => new Date().toISOString());
-  const cancellation = options.cancellation ?? { isCancellationRequested: false };
+  const cancellation = options.cancellation ?? {
+    isCancellationRequested: false,
+  };
   const events: StageEvent[] = [];
   const startedAt = now();
   let taskFingerprint = "unavailable";
@@ -37,7 +39,11 @@ export async function runSingleGroup(
   let cleanupWarning: string | undefined;
   let cleanupRequiresReview: boolean | undefined;
 
-  const emit = (stage: RunStage, state: StageEvent["state"], message: string): void => {
+  const emit = (
+    stage: RunStage,
+    state: StageEvent["state"],
+    message: string,
+  ): void => {
     const event = { stage, state, message, at: now() };
     events.push(event);
     try {
@@ -48,7 +54,8 @@ export async function runSingleGroup(
   };
 
   const ensureNotCancelled = (): void => {
-    if (cancellation.isCancellationRequested) throw new OperationCancelledError();
+    if (cancellation.isCancellationRequested)
+      throw new OperationCancelledError();
   };
 
   const execute = async <T>(
@@ -65,7 +72,11 @@ export async function runSingleGroup(
     try {
       value = await operation();
     } catch (error) {
-      emit(stage, error instanceof OperationCancelledError ? "cancelled" : "failed", errorMessage(error));
+      emit(
+        stage,
+        error instanceof OperationCancelledError ? "cancelled" : "failed",
+        errorMessage(error),
+      );
       throw error;
     }
     emit(stage, "completed", `${message}完成`);
@@ -75,7 +86,10 @@ export async function runSingleGroup(
 
   try {
     emit("preflight", "started", "校验素材、模板和输出目标");
-    const preflight = preflightGroups({ template: request.template, groups: [request.group] });
+    const preflight = preflightGroups({
+      template: request.template,
+      groups: [request.group],
+    });
     const group = preflight.groups[0];
     if (!group || group.status !== "valid") {
       const messages = group?.issues
@@ -84,12 +98,18 @@ export async function runSingleGroup(
         .join("；");
       throw new Error(messages || "素材组预检未通过");
     }
-    taskFingerprint = createTaskFingerprint(request.template, request.group, request.pluginVersion);
-    const attemptId = request.attemptId ?? fingerprintValue({
-      runId: request.runId,
-      groupName: request.group.name,
-      taskFingerprint,
-    });
+    taskFingerprint = createTaskFingerprint(
+      request.template,
+      request.group,
+      request.pluginVersion,
+    );
+    const attemptId =
+      request.attemptId ??
+      fingerprintValue({
+        runId: request.runId,
+        groupName: request.group.name,
+        taskFingerprint,
+      });
     await adapter.preflightOutput(
       request.runId,
       request.template,
@@ -115,13 +135,21 @@ export async function runSingleGroup(
       adapter.validateStructure(scope!, request.template, cancellation),
     );
     const draft = await execute("export-output", "导出本组预览与生产文件", () =>
-      adapter.exportOutputs(scope!, request.template, request.group, request.pluginVersion, cancellation),
+      adapter.exportOutputs(
+        scope!,
+        request.template,
+        request.group,
+        request.pluginVersion,
+        cancellation,
+      ),
     );
     const verified = await execute("verify-output", "重读并验证全部输出", () =>
       adapter.verifyOutput(scope!, draft, taskFingerprint, cancellation),
     );
-    output = await execute("commit-result", "原子提交本组结果", () =>
-      adapter.commitResult(scope!, verified, cancellation),
+    output = await execute(
+      "commit-result",
+      "原子提交本组结果",
+      () => adapter.commitResult(scope!, verified, cancellation),
       false,
     );
     status = "completed";
@@ -144,7 +172,9 @@ export async function runSingleGroup(
         emit("cleanup", "completed", "临时资源清理完成");
       } catch (error) {
         cleanupWarning = errorMessage(error);
-        cleanupRequiresReview = !(error instanceof ResourceCleanupError) || error.requiresManualReview;
+        cleanupRequiresReview =
+          !(error instanceof ResourceCleanupError) ||
+          error.requiresManualReview;
         emit("cleanup", "failed", cleanupWarning);
       }
     }

@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import { MemoryBatchAdapter } from "../src/adapters/memory-batch-adapter";
 import { samplePreflightPayload } from "../src/domain/sample";
 import type { InputGroupSnapshot } from "../src/domain/types";
-import { createTaskFingerprint, fingerprintBytes } from "../src/workflow/fingerprint";
+import {
+  createTaskFingerprint,
+  fingerprintBytes,
+} from "../src/workflow/fingerprint";
 import { RunCancellation, runSingleGroup } from "../src/workflow/run-group";
 import type { RunStage } from "../src/workflow/types";
 
@@ -18,7 +21,9 @@ function request(group: InputGroupSnapshot = samplePreflightPayload.groups[0]) {
 
 describe("single-group workflow", () => {
   it("runs the complete transaction in order and cleans owned resources", async () => {
-    const adapter = new MemoryBatchAdapter(samplePreflightPayload.template.masterFingerprint);
+    const adapter = new MemoryBatchAdapter(
+      samplePreflightPayload.template.masterFingerprint,
+    );
     const masterBefore = adapter.masterStateDigest;
 
     const result = await runSingleGroup(request(), adapter);
@@ -52,7 +57,10 @@ describe("single-group workflow", () => {
   ] satisfies Array<Exclude<RunStage, "preflight" | "cleanup">>)(
     "fails safely and cleans resources when %s fails",
     async (failAt) => {
-      const adapter = new MemoryBatchAdapter(samplePreflightPayload.template.masterFingerprint, { failAt });
+      const adapter = new MemoryBatchAdapter(
+        samplePreflightPayload.template.masterFingerprint,
+        { failAt },
+      );
 
       const result = await runSingleGroup(request(), adapter);
 
@@ -66,13 +74,16 @@ describe("single-group workflow", () => {
   );
 
   it("stops at a safe boundary and distinguishes cancellation from failure", async () => {
-    const adapter = new MemoryBatchAdapter(samplePreflightPayload.template.masterFingerprint);
+    const adapter = new MemoryBatchAdapter(
+      samplePreflightPayload.template.masterFingerprint,
+    );
     const cancellation = new RunCancellation();
 
     const result = await runSingleGroup(request(), adapter, {
       cancellation,
       onEvent: (event) => {
-        if (event.stage === "replace-artwork" && event.state === "completed") cancellation.cancel();
+        if (event.stage === "replace-artwork" && event.state === "completed")
+          cancellation.cancel();
       },
     });
 
@@ -83,9 +94,12 @@ describe("single-group workflow", () => {
   });
 
   it("classifies adapter-originated host cancellation separately from failure", async () => {
-    const adapter = new MemoryBatchAdapter(samplePreflightPayload.template.masterFingerprint, {
-      cancelAt: "replace-artwork",
-    });
+    const adapter = new MemoryBatchAdapter(
+      samplePreflightPayload.template.masterFingerprint,
+      {
+        cancelAt: "replace-artwork",
+      },
+    );
 
     const result = await runSingleGroup(request(), adapter);
 
@@ -95,13 +109,16 @@ describe("single-group workflow", () => {
   });
 
   it("does not publish when cancellation arrives before commit", async () => {
-    const adapter = new MemoryBatchAdapter(samplePreflightPayload.template.masterFingerprint);
+    const adapter = new MemoryBatchAdapter(
+      samplePreflightPayload.template.masterFingerprint,
+    );
     const cancellation = new RunCancellation();
 
     const result = await runSingleGroup(request(), adapter, {
       cancellation,
       onEvent: (event) => {
-        if (event.stage === "commit-result" && event.state === "started") cancellation.cancel();
+        if (event.stage === "commit-result" && event.state === "started")
+          cancellation.cancel();
       },
     });
 
@@ -110,13 +127,16 @@ describe("single-group workflow", () => {
   });
 
   it("treats a completed atomic commit as success even if cancellation arrives afterward", async () => {
-    const adapter = new MemoryBatchAdapter(samplePreflightPayload.template.masterFingerprint);
+    const adapter = new MemoryBatchAdapter(
+      samplePreflightPayload.template.masterFingerprint,
+    );
     const cancellation = new RunCancellation();
 
     const result = await runSingleGroup(request(), adapter, {
       cancellation,
       onEvent: (event) => {
-        if (event.stage === "commit-result" && event.state === "completed") cancellation.cancel();
+        if (event.stage === "commit-result" && event.state === "completed")
+          cancellation.cancel();
       },
     });
 
@@ -126,9 +146,12 @@ describe("single-group workflow", () => {
   });
 
   it("reports cleanup problems without turning an already committed result into failure", async () => {
-    const adapter = new MemoryBatchAdapter(samplePreflightPayload.template.masterFingerprint, {
-      failAt: "cleanup",
-    });
+    const adapter = new MemoryBatchAdapter(
+      samplePreflightPayload.template.masterFingerprint,
+      {
+        failAt: "cleanup",
+      },
+    );
 
     const result = await runSingleGroup(request(), adapter);
 
@@ -138,23 +161,33 @@ describe("single-group workflow", () => {
   });
 
   it("does not let a throwing progress observer prevent mandatory cleanup", async () => {
-    const adapter = new MemoryBatchAdapter(samplePreflightPayload.template.masterFingerprint);
+    const adapter = new MemoryBatchAdapter(
+      samplePreflightPayload.template.masterFingerprint,
+    );
 
     const result = await runSingleGroup(request(), adapter, {
       onEvent: (event) => {
-        if (event.stage === "cleanup" && event.state === "started") throw new Error("observer failed");
+        if (event.stage === "cleanup" && event.state === "started")
+          throw new Error("observer failed");
       },
     });
 
     expect(result.status).toBe("completed");
     expect(adapter.retainedScopeCount).toBe(0);
-    expect(result.events).toContainEqual(expect.objectContaining({ stage: "cleanup", state: "completed" }));
+    expect(result.events).toContainEqual(
+      expect.objectContaining({ stage: "cleanup", state: "completed" }),
+    );
   });
 
   it("blocks an invalid group before creating a work copy", async () => {
-    const adapter = new MemoryBatchAdapter(samplePreflightPayload.template.masterFingerprint);
+    const adapter = new MemoryBatchAdapter(
+      samplePreflightPayload.template.masterFingerprint,
+    );
 
-    const result = await runSingleGroup(request(samplePreflightPayload.groups[1]), adapter);
+    const result = await runSingleGroup(
+      request(samplePreflightPayload.groups[1]),
+      adapter,
+    );
 
     expect(result.status).toBe("failed");
     expect(result.lastStage).toBe("preflight");
@@ -162,7 +195,9 @@ describe("single-group workflow", () => {
   });
 
   it("blocks output capability and destination failures before creating or modifying documents", async () => {
-    const adapter = new MemoryBatchAdapter(samplePreflightPayload.template.masterFingerprint);
+    const adapter = new MemoryBatchAdapter(
+      samplePreflightPayload.template.masterFingerprint,
+    );
     adapter.preflightOutput = async () => {
       throw new Error("输出目录已存在，禁止覆盖");
     };
@@ -181,16 +216,30 @@ describe("single-group workflow", () => {
     const changed = structuredClone(original);
     changed.files[0].fingerprint = "different-source-content";
 
-    const first = createTaskFingerprint(samplePreflightPayload.template, original, "0.1.0");
-    const second = createTaskFingerprint(samplePreflightPayload.template, changed, "0.1.0");
-    const third = createTaskFingerprint(samplePreflightPayload.template, original, "0.2.0");
+    const first = createTaskFingerprint(
+      samplePreflightPayload.template,
+      original,
+      "0.1.0",
+    );
+    const second = createTaskFingerprint(
+      samplePreflightPayload.template,
+      changed,
+      "0.1.0",
+    );
+    const third = createTaskFingerprint(
+      samplePreflightPayload.template,
+      original,
+      "0.2.0",
+    );
     const changedOutput = structuredClone(samplePreflightPayload.template);
     changedOutput.output.production[0].profile.ppi = 300;
 
     expect(first).toMatch(/^[0-9a-f]{64}$/);
     expect(second).not.toBe(first);
     expect(third).not.toBe(first);
-    expect(createTaskFingerprint(changedOutput, original, "0.1.0")).not.toBe(first);
+    expect(createTaskFingerprint(changedOutput, original, "0.1.0")).not.toBe(
+      first,
+    );
   });
 
   it("keeps task identity stable when unchanged files receive new scan-scoped references", () => {
@@ -211,11 +260,17 @@ describe("single-group workflow", () => {
 
   it("ignores unsupported same-stem files exactly as preflight does", () => {
     const group = structuredClone(samplePreflightPayload.groups[0]);
-    const original = createTaskFingerprint(samplePreflightPayload.template, group, "0.1.0");
+    const original = createTaskFingerprint(
+      samplePreflightPayload.template,
+      group,
+      "0.1.0",
+    );
     const sameStem = group.files[0].name.replace(/\.[^.]+$/, ".psd");
     group.files.push({ name: sameStem });
 
-    expect(createTaskFingerprint(samplePreflightPayload.template, group, "0.1.0")).toBe(original);
+    expect(
+      createTaskFingerprint(samplePreflightPayload.template, group, "0.1.0"),
+    ).toBe(original);
   });
 
   it("uses standard SHA-256 and canonicalizes unordered configuration arrays", () => {
@@ -248,7 +303,9 @@ describe("single-group workflow", () => {
   });
 
   it("does not leak artwork when groups run through the same adapter", async () => {
-    const adapter = new MemoryBatchAdapter(samplePreflightPayload.template.masterFingerprint);
+    const adapter = new MemoryBatchAdapter(
+      samplePreflightPayload.template.masterFingerprint,
+    );
     const groupA = structuredClone(samplePreflightPayload.groups[0]);
     const groupB = structuredClone(groupA);
     groupB.files = groupB.files.map((file) => ({
@@ -259,20 +316,36 @@ describe("single-group workflow", () => {
 
     const firstA = await runSingleGroup(request(groupA), adapter);
     const resultB = await runSingleGroup(request(groupB), adapter);
-    const secondA = await runSingleGroup({ ...request(groupA), runId: "run-A-again" }, adapter);
+    const secondA = await runSingleGroup(
+      { ...request(groupA), runId: "run-A-again" },
+      adapter,
+    );
 
-    expect([firstA.status, resultB.status, secondA.status]).toEqual(["completed", "completed", "completed"]);
-    expect(firstA.output?.artifacts[0].fingerprint).toBe(secondA.output?.artifacts[0].fingerprint);
-    expect(resultB.output?.artifacts[0].fingerprint).not.toBe(firstA.output?.artifacts[0].fingerprint);
+    expect([firstA.status, resultB.status, secondA.status]).toEqual([
+      "completed",
+      "completed",
+      "completed",
+    ]);
+    expect(firstA.output?.artifacts[0].fingerprint).toBe(
+      secondA.output?.artifacts[0].fingerprint,
+    );
+    expect(resultB.output?.artifacts[0].fingerprint).not.toBe(
+      firstA.output?.artifacts[0].fingerprint,
+    );
     expect(resultB.taskFingerprint).not.toBe(firstA.taskFingerprint);
     expect(adapter.openSessionCount).toBe(0);
   });
 
   it("does not retain execution scopes across repeated runs", async () => {
-    const adapter = new MemoryBatchAdapter(samplePreflightPayload.template.masterFingerprint);
+    const adapter = new MemoryBatchAdapter(
+      samplePreflightPayload.template.masterFingerprint,
+    );
 
     for (let index = 0; index < 20; index += 1) {
-      const result = await runSingleGroup({ ...request(), runId: `stability-${index}` }, adapter);
+      const result = await runSingleGroup(
+        { ...request(), runId: `stability-${index}` },
+        adapter,
+      );
       expect(result.status).toBe("completed");
       expect(adapter.retainedScopeCount).toBe(0);
       expect(adapter.ownedTemporaryCount).toBe(0);

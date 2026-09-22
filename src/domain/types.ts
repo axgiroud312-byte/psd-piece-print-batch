@@ -1,6 +1,5 @@
 export type FitAnchor =
-  | { kind: "center" }
-  | { kind: "offset"; x: number; y: number };
+  { kind: "center" } | { kind: "offset"; x: number; y: number };
 
 export type FitRule =
   | { mode: "strict"; anchor: FitAnchor }
@@ -61,12 +60,10 @@ export interface OutputRegion {
 }
 
 export type OutputIccPolicy =
-  | { mode: "none" }
-  | { mode: "embed"; profile: string };
+  { mode: "none" } | { mode: "embed"; profile: string };
 
 export type OutputBackground =
-  | { kind: "transparent" }
-  | { kind: "solid"; color: string };
+  { kind: "transparent" } | { kind: "solid"; color: string };
 
 export interface OutputRenderProfile {
   format: OutputFormat;
@@ -93,7 +90,10 @@ export interface OutputTarget {
 export type ProductionOutputTarget =
   | (OutputTarget & { productionKind: "piece"; garmentPieceId: string })
   | (OutputTarget & { productionKind: "combined" })
-  | (OutputTarget & { productionKind: "editable-work-copy"; preserveAllLayers: true });
+  | (OutputTarget & {
+      productionKind: "editable-work-copy";
+      preserveAllLayers: true;
+    });
 
 export interface TemplateOutputConfig {
   capabilityProfileId: string;

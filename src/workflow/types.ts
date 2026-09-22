@@ -127,11 +127,31 @@ export interface GroupExecutionAdapter {
     taskFingerprint: string,
     cancellation: CancellationToken,
   ): Promise<void>;
-  createScope(runId: string, attemptId: string, taskFingerprint: string): ExecutionScope;
-  createWorkCopy(scope: ExecutionScope, template: TemplateConfig, cancellation: CancellationToken): Promise<void>;
-  resolveTemplate(scope: ExecutionScope, template: TemplateConfig, cancellation: CancellationToken): Promise<void>;
-  replaceArtwork(scope: ExecutionScope, assignments: ArtworkAssignment[], cancellation: CancellationToken): Promise<void>;
-  validateStructure(scope: ExecutionScope, template: TemplateConfig, cancellation: CancellationToken): Promise<void>;
+  createScope(
+    runId: string,
+    attemptId: string,
+    taskFingerprint: string,
+  ): ExecutionScope;
+  createWorkCopy(
+    scope: ExecutionScope,
+    template: TemplateConfig,
+    cancellation: CancellationToken,
+  ): Promise<void>;
+  resolveTemplate(
+    scope: ExecutionScope,
+    template: TemplateConfig,
+    cancellation: CancellationToken,
+  ): Promise<void>;
+  replaceArtwork(
+    scope: ExecutionScope,
+    assignments: ArtworkAssignment[],
+    cancellation: CancellationToken,
+  ): Promise<void>;
+  validateStructure(
+    scope: ExecutionScope,
+    template: TemplateConfig,
+    cancellation: CancellationToken,
+  ): Promise<void>;
   exportOutputs(
     scope: ExecutionScope,
     template: TemplateConfig,

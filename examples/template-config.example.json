@@ -1,0 +1,191 @@
+{
+  "schemaVersion": 2,
+  "templateId": "shirt-example-one-size",
+  "version": "0.1.0-unverified",
+  "masterFingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+  "masterSourceRef": "RESELECT_IN_PLUGIN",
+  "document": {
+    "width": 6000,
+    "height": 6000,
+    "ppi": 150,
+    "colorMode": "rgb",
+    "bitDepth": 8,
+    "iccProfile": null
+  },
+  "garmentPieces": [
+    { "id": "piece-front", "name": "前片" },
+    { "id": "piece-back", "name": "后片" },
+    { "id": "piece-left-sleeve", "name": "左袖" },
+    { "id": "piece-right-sleeve", "name": "右袖" }
+  ],
+  "artworkEntries": [
+    {
+      "id": "entry-front",
+      "name": "前片入口",
+      "inputKey": "front",
+      "contentSourceId": "source-front",
+      "replacementLayerName": "REPLACE_ART",
+      "required": true,
+      "canvas": { "width": 2400, "height": 3200 },
+      "fit": { "mode": "strict", "anchor": { "kind": "center" } }
+    },
+    {
+      "id": "entry-back",
+      "name": "后片入口",
+      "inputKey": "back",
+      "contentSourceId": "source-back",
+      "replacementLayerName": "REPLACE_ART",
+      "required": true,
+      "canvas": { "width": 2400, "height": 3200 },
+      "fit": { "mode": "cover", "anchor": { "kind": "center" } }
+    },
+    {
+      "id": "entry-sleeves",
+      "name": "袖片共享入口",
+      "inputKey": "sleeves",
+      "contentSourceId": "source-sleeves",
+      "replacementLayerName": "REPLACE_ART",
+      "required": true,
+      "canvas": { "width": 1800, "height": 2400 },
+      "fit": {
+        "mode": "cover",
+        "anchor": { "kind": "offset", "x": 0, "y": -24 }
+      }
+    }
+  ],
+  "instances": [
+    {
+      "id": "instance-front",
+      "garmentPieceId": "piece-front",
+      "artworkEntryId": "entry-front",
+      "layerPath": ["PRINT｜生产内容", "前片", "ART｜印花智能对象实例"]
+    },
+    {
+      "id": "instance-back",
+      "garmentPieceId": "piece-back",
+      "artworkEntryId": "entry-back",
+      "layerPath": ["PRINT｜生产内容", "后片", "ART｜印花智能对象实例"]
+    },
+    {
+      "id": "instance-left-sleeve",
+      "garmentPieceId": "piece-left-sleeve",
+      "artworkEntryId": "entry-sleeves",
+      "layerPath": ["PRINT｜生产内容", "左袖", "ART｜印花智能对象实例"]
+    },
+    {
+      "id": "instance-right-sleeve",
+      "garmentPieceId": "piece-right-sleeve",
+      "artworkEntryId": "entry-sleeves",
+      "layerPath": ["PRINT｜生产内容", "右袖", "ART｜印花智能对象实例"]
+    }
+  ],
+  "output": {
+    "capabilityProfileId": "UNVERIFIED-EXAMPLE-OUTPUT",
+    "productionMode": "pieces",
+    "preview": {
+      "id": "preview-composite",
+      "fileName": "预览.jpg",
+      "region": { "x": 0, "y": 0, "width": 4800, "height": 3600 },
+      "visibleLayerPaths": [["PREVIEW｜预览内容"]],
+      "markLayerPaths": [],
+      "maximumFileBytes": 80000000,
+      "profile": {
+        "format": "jpeg",
+        "compression": "jpeg-high",
+        "ppi": 72,
+        "colorMode": "rgb",
+        "bitDepth": 8,
+        "icc": { "mode": "none" },
+        "background": { "kind": "solid", "color": "#ffffff" },
+        "includeGuides": false,
+        "includeMarks": false
+      }
+    },
+    "production": [
+      {
+        "id": "production-front",
+        "productionKind": "piece",
+        "garmentPieceId": "piece-front",
+        "fileName": "前片.png",
+        "region": { "x": 0, "y": 0, "width": 2400, "height": 3200 },
+        "visibleLayerPaths": [["PRINT｜生产内容", "前片"]],
+        "markLayerPaths": [["MARKS｜工艺标记", "前片"]],
+        "maximumFileBytes": 80000000,
+        "profile": {
+          "format": "png",
+          "compression": "lossless",
+          "ppi": 150,
+          "colorMode": "rgb",
+          "bitDepth": 8,
+          "icc": { "mode": "none" },
+          "background": { "kind": "transparent" },
+          "includeGuides": false,
+          "includeMarks": false
+        }
+      },
+      {
+        "id": "production-back",
+        "productionKind": "piece",
+        "garmentPieceId": "piece-back",
+        "fileName": "后片.png",
+        "region": { "x": 2400, "y": 0, "width": 2400, "height": 3200 },
+        "visibleLayerPaths": [["PRINT｜生产内容", "后片"]],
+        "markLayerPaths": [["MARKS｜工艺标记", "后片"]],
+        "maximumFileBytes": 80000000,
+        "profile": {
+          "format": "png",
+          "compression": "lossless",
+          "ppi": 150,
+          "colorMode": "rgb",
+          "bitDepth": 8,
+          "icc": { "mode": "none" },
+          "background": { "kind": "transparent" },
+          "includeGuides": false,
+          "includeMarks": false
+        }
+      },
+      {
+        "id": "production-left-sleeve",
+        "productionKind": "piece",
+        "garmentPieceId": "piece-left-sleeve",
+        "fileName": "左袖.png",
+        "region": { "x": 0, "y": 3200, "width": 1800, "height": 2400 },
+        "visibleLayerPaths": [["PRINT｜生产内容", "左袖"]],
+        "markLayerPaths": [["MARKS｜工艺标记", "左袖"]],
+        "maximumFileBytes": 80000000,
+        "profile": {
+          "format": "png",
+          "compression": "lossless",
+          "ppi": 150,
+          "colorMode": "rgb",
+          "bitDepth": 8,
+          "icc": { "mode": "none" },
+          "background": { "kind": "transparent" },
+          "includeGuides": false,
+          "includeMarks": false
+        }
+      },
+      {
+        "id": "production-right-sleeve",
+        "productionKind": "piece",
+        "garmentPieceId": "piece-right-sleeve",
+        "fileName": "右袖.png",
+        "region": { "x": 1800, "y": 3200, "width": 1800, "height": 2400 },
+        "visibleLayerPaths": [["PRINT｜生产内容", "右袖"]],
+        "markLayerPaths": [["MARKS｜工艺标记", "右袖"]],
+        "maximumFileBytes": 80000000,
+        "profile": {
+          "format": "png",
+          "compression": "lossless",
+          "ppi": 150,
+          "colorMode": "rgb",
+          "bitDepth": 8,
+          "icc": { "mode": "none" },
+          "background": { "kind": "transparent" },
+          "includeGuides": false,
+          "includeMarks": false
+        }
+      }
+    ]
+  }
+}

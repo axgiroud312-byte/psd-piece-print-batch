@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { parsePreflightPayload, preflightGroups, validateTemplate } from "../src/domain/preflight";
+import {
+  parsePreflightPayload,
+  preflightGroups,
+  validateTemplate,
+} from "../src/domain/preflight";
 import { samplePreflightPayload } from "../src/domain/sample";
 import type { PreflightPayload, TemplateConfig } from "../src/domain/types";
 
@@ -18,7 +22,10 @@ describe("template validation", () => {
     });
 
     expect(validateTemplate(payload.template)).toContainEqual(
-      expect.objectContaining({ code: "shared-source-conflict", severity: "error" }),
+      expect.objectContaining({
+        code: "shared-source-conflict",
+        severity: "error",
+      }),
     );
   });
 
@@ -37,7 +44,10 @@ describe("template validation", () => {
     });
 
     expect(validateTemplate(payload.template)).toContainEqual(
-      expect.objectContaining({ code: "shared-rule-conflict", severity: "error" }),
+      expect.objectContaining({
+        code: "shared-rule-conflict",
+        severity: "error",
+      }),
     );
   });
 
@@ -56,7 +66,10 @@ describe("template validation", () => {
     });
 
     expect(validateTemplate(payload.template)).toContainEqual(
-      expect.objectContaining({ code: "shared-rule-conflict", severity: "error" }),
+      expect.objectContaining({
+        code: "shared-rule-conflict",
+        severity: "error",
+      }),
     );
   });
 
@@ -82,18 +95,27 @@ describe("template validation", () => {
     payload.template.instances[0].layerPath = [];
 
     const codes = validateTemplate(payload.template).map((issue) => issue.code);
-    expect(codes).toEqual(expect.arrayContaining(["unknown-piece", "missing-layer-path"]));
+    expect(codes).toEqual(
+      expect.arrayContaining(["unknown-piece", "missing-layer-path"]),
+    );
   });
 
   it("rejects duplicate layer paths and entries without instances", () => {
     const payload = cloneSample();
-    payload.template.instances[1].layerPath = [...payload.template.instances[0].layerPath];
+    payload.template.instances[1].layerPath = [
+      ...payload.template.instances[0].layerPath,
+    ];
     payload.template.instances = payload.template.instances.filter(
       (instance) => instance.artworkEntryId !== "entry-sleeves",
     );
 
     const codes = validateTemplate(payload.template).map((issue) => issue.code);
-    expect(codes).toEqual(expect.arrayContaining(["duplicate-layer-path", "entry-without-instance"]));
+    expect(codes).toEqual(
+      expect.arrayContaining([
+        "duplicate-layer-path",
+        "entry-without-instance",
+      ]),
+    );
   });
 
   it("rejects an empty no-op template", () => {
@@ -110,22 +132,31 @@ describe("template validation", () => {
   it("requires explicit fixed output regions, metadata, and one production target per piece", () => {
     const payload = cloneSample();
     payload.template.output.preview.region.width = 0;
-    payload.template.output.preview.profile.background = { kind: "transparent" };
+    payload.template.output.preview.profile.background = {
+      kind: "transparent",
+    };
     payload.template.output.production = [];
 
     const codes = validateTemplate(payload.template).map((issue) => issue.code);
     expect(codes).toEqual(
-      expect.arrayContaining(["invalid-output-region", "output-background", "missing-output-piece"]),
+      expect.arrayContaining([
+        "invalid-output-region",
+        "output-background",
+        "missing-output-piece",
+      ]),
     );
   });
 
   it("rejects output filename collisions and mismatched format settings", () => {
     const payload = cloneSample();
-    payload.template.output.production[0].fileName = payload.template.output.preview.fileName;
+    payload.template.output.production[0].fileName =
+      payload.template.output.preview.fileName;
     payload.template.output.production[1].profile.compression = "jpeg-high";
 
     const codes = validateTemplate(payload.template).map((issue) => issue.code);
-    expect(codes).toEqual(expect.arrayContaining(["duplicate-id", "output-compression"]));
+    expect(codes).toEqual(
+      expect.arrayContaining(["duplicate-id", "output-compression"]),
+    );
   });
 
   it("supports combined production output and optional editable work copies", () => {
@@ -142,7 +173,12 @@ describe("template validation", () => {
       productionKind: "editable-work-copy" as const,
       preserveAllLayers: true as const,
       fileName: "工作副本.psb",
-      region: { x: 0, y: 0, width: payload.template.document.width, height: payload.template.document.height },
+      region: {
+        x: 0,
+        y: 0,
+        width: payload.template.document.width,
+        height: payload.template.document.height,
+      },
       visibleLayerPaths: [],
       markLayerPaths: [],
       maximumFileBytes: 200_000_000,
@@ -163,7 +199,8 @@ describe("template validation", () => {
 
   it("rejects fixed regions outside the registered document canvas", () => {
     const payload = cloneSample();
-    payload.template.output.preview.region.x = payload.template.document.width - 1;
+    payload.template.output.preview.region.x =
+      payload.template.document.width - 1;
 
     expect(validateTemplate(payload.template)).toContainEqual(
       expect.objectContaining({ code: "output-region-outside-document" }),
@@ -198,9 +235,16 @@ describe("group preflight", () => {
       },
     ];
 
-    const codes = preflightGroups(payload).groups[0].issues.map((issue) => issue.code);
+    const codes = preflightGroups(payload).groups[0].issues.map(
+      (issue) => issue.code,
+    );
     expect(codes).toEqual(
-      expect.arrayContaining(["duplicate-match", "missing-required", "extra-file", "unsupported-file"]),
+      expect.arrayContaining([
+        "duplicate-match",
+        "missing-required",
+        "extra-file",
+        "unsupported-file",
+      ]),
     );
   });
 
@@ -213,7 +257,10 @@ describe("group preflight", () => {
     };
 
     expect(preflightGroups(payload).groups[0].issues).toContainEqual(
-      expect.objectContaining({ code: "strict-size-mismatch", fileName: "front.png" }),
+      expect.objectContaining({
+        code: "strict-size-mismatch",
+        fileName: "front.png",
+      }),
     );
   });
 
@@ -226,7 +273,10 @@ describe("group preflight", () => {
     };
 
     expect(preflightGroups(payload).groups[0].issues).toContainEqual(
-      expect.objectContaining({ code: "missing-dimensions", fileName: "back.jpg" }),
+      expect.objectContaining({
+        code: "missing-dimensions",
+        fileName: "back.jpg",
+      }),
     );
   });
 
@@ -236,7 +286,10 @@ describe("group preflight", () => {
     payload.groups[0].files[0].fingerprint = undefined;
 
     expect(preflightGroups(payload).groups[0].issues).toContainEqual(
-      expect.objectContaining({ code: "missing-source-identity", fileName: "front.png" }),
+      expect.objectContaining({
+        code: "missing-source-identity",
+        fileName: "front.png",
+      }),
     );
   });
 
@@ -248,7 +301,10 @@ describe("group preflight", () => {
     };
 
     expect(preflightGroups(payload).groups[0].issues).toContainEqual(
-      expect.objectContaining({ code: "offset-out-of-range", entryId: "entry-back" }),
+      expect.objectContaining({
+        code: "offset-out-of-range",
+        entryId: "entry-back",
+      }),
     );
   });
 
@@ -264,28 +320,45 @@ describe("group preflight", () => {
 
 describe("manifest parsing", () => {
   it("parses a structurally valid payload", () => {
-    const template = parsePreflightPayload(JSON.stringify(samplePreflightPayload)).template;
+    const template = parsePreflightPayload(
+      JSON.stringify(samplePreflightPayload),
+    ).template;
     expect(template.templateId).toBe("shirt-demo-one-size");
     expect(template.schemaVersion).toBe(2);
-    expect(template.output.preview.region).toEqual({ x: 0, y: 0, width: 4800, height: 3600 });
+    expect(template.output.preview.region).toEqual({
+      x: 0,
+      y: 0,
+      width: 4800,
+      height: 3600,
+    });
     expect(template.output.production).toHaveLength(4);
   });
 
   it("rejects malformed JSON and missing arrays", () => {
-    expect(() => parsePreflightPayload("not-json")).toThrow("清单不是有效的 JSON");
+    expect(() => parsePreflightPayload("not-json")).toThrow(
+      "清单不是有效的 JSON",
+    );
     const invalid: Partial<TemplateConfig> = { templateId: "x" };
-    expect(() => parsePreflightPayload(JSON.stringify({ template: invalid, groups: [] }))).toThrow();
+    expect(() =>
+      parsePreflightPayload(JSON.stringify({ template: invalid, groups: [] })),
+    ).toThrow();
   });
 
   it("rejects malformed nested objects and boolean-like strings", () => {
-    const nullPiece = cloneSample() as unknown as { template: { garmentPieces: unknown[] } };
+    const nullPiece = cloneSample() as unknown as {
+      template: { garmentPieces: unknown[] };
+    };
     nullPiece.template.garmentPieces[0] = null;
-    expect(() => parsePreflightPayload(JSON.stringify(nullPiece))).toThrow("裁片必须是对象");
+    expect(() => parsePreflightPayload(JSON.stringify(nullPiece))).toThrow(
+      "裁片必须是对象",
+    );
 
     const stringBoolean = cloneSample() as unknown as {
       template: { artworkEntries: Array<{ required: unknown }> };
     };
     stringBoolean.template.artworkEntries[0].required = "false";
-    expect(() => parsePreflightPayload(JSON.stringify(stringBoolean))).toThrow("字段 required 必须是布尔值");
+    expect(() => parsePreflightPayload(JSON.stringify(stringBoolean))).toThrow(
+      "字段 required 必须是布尔值",
+    );
   });
 });

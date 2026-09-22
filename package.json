@@ -9,19 +9,26 @@
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "dev": "webpack --mode development --watch",
+    "format": "prettier --write . --ignore-unknown",
+    "format:check": "prettier --check . --ignore-unknown",
+    "audit:dependencies": "npm audit --registry=https://registry.npmjs.org",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "npm run clean && webpack --mode production",
-    "check": "npm run typecheck && npm run test && npm run build"
+    "package:release": "node scripts/package-release.mjs",
+    "release:build": "npm run check && npm run audit:dependencies && npm run package:release",
+    "check": "npm run format:check && npm run typecheck && npm run test && npm run build"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",
-    "copy-webpack-plugin": "^13.0.1",
+    "adm-zip": "^0.6.1",
+    "copy-webpack-plugin": "^14.0.0",
     "jsdom": "^27.0.0",
+    "prettier": "^3.9.8",
     "ts-loader": "^9.5.4",
     "typescript": "^5.9.2",
-    "vitest": "^3.2.4",
+    "vitest": "^5.0.1",
     "webpack": "^5.101.3",
     "webpack-cli": "^6.0.1"
   }

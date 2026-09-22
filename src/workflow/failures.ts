@@ -43,7 +43,11 @@ export class ResourceCleanupError extends Error {
 
 export function failureDetails(error: unknown): FailureDetails {
   if (error instanceof WorkflowFailure) {
-    return { code: error.code, disposition: error.disposition, message: error.message };
+    return {
+      code: error.code,
+      disposition: error.disposition,
+      message: error.message,
+    };
   }
   return {
     code: "group-operation-failed",

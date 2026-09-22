@@ -12,13 +12,16 @@ function crc32(bytes: Uint8Array): number {
   let crc = 0xffffffff;
   for (const byte of bytes) {
     crc ^= byte;
-    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    for (let bit = 0; bit < 8; bit += 1)
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
   }
   return (crc ^ 0xffffffff) >>> 0;
 }
 
 function pngChunk(type: string, data: Uint8Array): Uint8Array {
-  const typeBytes = Uint8Array.from(type, (character) => character.charCodeAt(0));
+  const typeBytes = Uint8Array.from(type, (character) =>
+    character.charCodeAt(0),
+  );
   const chunk = new Uint8Array(12 + data.length);
   const view = new DataView(chunk.buffer);
   view.setUint32(0, data.length);
@@ -32,7 +35,9 @@ function pngChunk(type: string, data: Uint8Array): Uint8Array {
 }
 
 function joinBytes(parts: Uint8Array[]): ArrayBuffer {
-  const result = new Uint8Array(parts.reduce((length, part) => length + part.length, 0));
+  const result = new Uint8Array(
+    parts.reduce((length, part) => length + part.length, 0),
+  );
   let offset = 0;
   for (const part of parts) {
     result.set(part, offset);
@@ -64,22 +69,38 @@ function jpeg(width: number, height: number): ArrayBuffer {
   view.setUint16(7, height);
   view.setUint16(9, width);
   bytes.set([0x01, 0x01, 0x11, 0x00], 11);
-  bytes.set([0xff, 0xda, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3f, 0x00, 0x00, 0xff, 0xd9], 15);
+  bytes.set(
+    [
+      0xff, 0xda, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3f, 0x00, 0x00, 0xff,
+      0xd9,
+    ],
+    15,
+  );
   return bytes.buffer;
 }
 
 describe("image metadata reader", () => {
   it("reads PNG and JPEG pixel dimensions from file headers", () => {
-    expect(readImageDimensions(png(24, 32), "png")).toEqual({ width: 24, height: 32 });
-    expect(readImageDimensions(jpeg(18, 24), "jpg")).toEqual({ width: 18, height: 24 });
+    expect(readImageDimensions(png(24, 32), "png")).toEqual({
+      width: 24,
+      height: 32,
+    });
+    expect(readImageDimensions(jpeg(18, 24), "jpg")).toEqual({
+      width: 18,
+      height: 24,
+    });
   });
 
   it("rejects corrupt and unsupported files", () => {
-    expect(() => readImageDimensions(new ArrayBuffer(8), "png")).toThrow("PNG 文件头无效");
+    expect(() => readImageDimensions(new ArrayBuffer(8), "png")).toThrow(
+      "PNG 文件头无效",
+    );
     const signatureOnly = new Uint8Array(24);
     signatureOnly.set([137, 80, 78, 71, 13, 10, 26, 10]);
     expect(() => readImageDimensions(signatureOnly.buffer, "png")).toThrow();
-    expect(() => readImageDimensions(new ArrayBuffer(8), "tif")).toThrow("不支持的素材格式");
+    expect(() => readImageDimensions(new ArrayBuffer(8), "tif")).toThrow(
+      "不支持的素材格式",
+    );
   });
 });
 
@@ -129,8 +150,12 @@ describe("UXP input scanner", () => {
         fingerprint: expect.any(String),
       }),
     );
-    await expect(resolveScannedInputFile(scanned!.sourceRef!, scanned!.fingerprint!)).resolves.toBe(goodFile);
-    expect(groups[0].files.find((file) => file.name === "损坏.jpg")?.metadataError).toBeTruthy();
+    await expect(
+      resolveScannedInputFile(scanned!.sourceRef!, scanned!.fingerprint!),
+    ).resolves.toBe(goodFile);
+    expect(
+      groups[0].files.find((file) => file.name === "损坏.jpg")?.metadataError,
+    ).toBeTruthy();
     expect(groups[0].files).toContainEqual({ name: "说明.txt" });
   });
 
@@ -172,7 +197,9 @@ describe("UXP input scanner", () => {
       name: "输入",
       isFile: false,
       isFolder: true,
-      getEntries: async () => [{ name: "all.png", isFile: true, isFolder: false }],
+      getEntries: async () => [
+        { name: "all.png", isFile: true, isFolder: false },
+      ],
     };
     const emptyRoot = {
       name: "输入",
@@ -181,8 +208,12 @@ describe("UXP input scanner", () => {
       getEntries: async () => [],
     };
 
-    await expect(scanInputFolder(looseRoot as never, "binary")).rejects.toThrow("根目录不能直接放文件");
-    await expect(scanInputFolder(emptyRoot as never, "binary")).rejects.toThrow("没有分组子文件夹");
+    await expect(scanInputFolder(looseRoot as never, "binary")).rejects.toThrow(
+      "根目录不能直接放文件",
+    );
+    await expect(scanInputFolder(emptyRoot as never, "binary")).rejects.toThrow(
+      "没有分组子文件夹",
+    );
   });
 
   it("loads an independently selected template JSON file", async () => {
@@ -199,7 +230,9 @@ describe("UXP input scanner", () => {
       },
     };
 
-    await expect(selectTemplateConfigJson(storage as never)).resolves.toBe('{"schemaVersion":1}');
+    await expect(selectTemplateConfigJson(storage as never)).resolves.toBe(
+      '{"schemaVersion":1}',
+    );
   });
 
   it("never rebinds an old source reference after scanning an identically named root", async () => {
@@ -229,15 +262,25 @@ describe("UXP input scanner", () => {
       read: async () => png(20, 20),
     };
 
-    const first = (await scanInputFolder(makeRoot(firstFile) as never, "binary"))[0].files[0];
-    const second = (await scanInputFolder(makeRoot(secondFile) as never, "binary"))[0].files[0];
+    const first = (
+      await scanInputFolder(makeRoot(firstFile) as never, "binary")
+    )[0].files[0];
+    const second = (
+      await scanInputFolder(makeRoot(secondFile) as never, "binary")
+    )[0].files[0];
 
-    await expect(resolveScannedInputFile(first.sourceRef!, first.fingerprint!)).rejects.toThrow("来源引用已失效");
-    await expect(resolveScannedInputFile(first.sourceRef!, first.fingerprint!)).rejects.toMatchObject({
+    await expect(
+      resolveScannedInputFile(first.sourceRef!, first.fingerprint!),
+    ).rejects.toThrow("来源引用已失效");
+    await expect(
+      resolveScannedInputFile(first.sourceRef!, first.fingerprint!),
+    ).rejects.toMatchObject({
       code: "input-access-expired",
       disposition: "batch",
     });
-    await expect(resolveScannedInputFile(second.sourceRef!, second.fingerprint!)).resolves.toBe(secondFile);
+    await expect(
+      resolveScannedInputFile(second.sourceRef!, second.fingerprint!),
+    ).resolves.toBe(secondFile);
   });
 
   it("rechecks file bytes when a scanned source is consumed", async () => {
@@ -260,13 +303,16 @@ describe("UXP input scanner", () => {
         },
       ],
     };
-    const snapshot = (await scanInputFolder(root as never, "binary"))[0].files[0];
+    const snapshot = (await scanInputFolder(root as never, "binary"))[0]
+      .files[0];
     file.read = async () => png(11, 10);
 
-    await expect(resolveScannedInputFile(snapshot.sourceRef!, snapshot.fingerprint!)).rejects.toThrow(
-      "预检后发生变化",
-    );
-    await expect(resolveScannedInputFile(snapshot.sourceRef!, snapshot.fingerprint!)).rejects.toMatchObject({
+    await expect(
+      resolveScannedInputFile(snapshot.sourceRef!, snapshot.fingerprint!),
+    ).rejects.toThrow("预检后发生变化");
+    await expect(
+      resolveScannedInputFile(snapshot.sourceRef!, snapshot.fingerprint!),
+    ).rejects.toMatchObject({
       code: "input-content-changed",
       disposition: "group",
     });
@@ -283,17 +329,24 @@ describe("UXP input scanner", () => {
       name: "输入",
       isFile: false,
       isFolder: true,
-      getEntries: async () => [{
-        name: "款式001",
-        isFile: false,
-        isFolder: true,
-        getEntries: async () => [file],
-      }],
+      getEntries: async () => [
+        {
+          name: "款式001",
+          isFile: false,
+          isFolder: true,
+          getEntries: async () => [file],
+        },
+      ],
     };
-    const snapshot = (await scanInputFolder(root as never, "binary"))[0].files[0];
-    file.read = async () => { throw new Error("file locked"); };
+    const snapshot = (await scanInputFolder(root as never, "binary"))[0]
+      .files[0];
+    file.read = async () => {
+      throw new Error("file locked");
+    };
 
-    await expect(resolveScannedInputFile(snapshot.sourceRef!, snapshot.fingerprint!)).rejects.toMatchObject({
+    await expect(
+      resolveScannedInputFile(snapshot.sourceRef!, snapshot.fingerprint!),
+    ).rejects.toMatchObject({
       code: "input-file-read-failed",
       disposition: "group",
     });

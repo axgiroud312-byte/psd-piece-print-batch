@@ -46,7 +46,10 @@ function requireNumber(record: Record<string, unknown>, key: string): number {
   return value;
 }
 
-function optionalNumber(record: Record<string, unknown>, key: string): number | undefined {
+function optionalNumber(
+  record: Record<string, unknown>,
+  key: string,
+): number | undefined {
   const value = record[key];
   if (value === undefined) return undefined;
   if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -61,13 +64,18 @@ function requireBoolean(record: Record<string, unknown>, key: string): boolean {
   return value;
 }
 
-function requireRecord(record: Record<string, unknown>, key: string): Record<string, unknown> {
+function requireRecord(
+  record: Record<string, unknown>,
+  key: string,
+): Record<string, unknown> {
   const value = record[key];
   if (!isRecord(value)) throw new Error(`字段 ${key} 必须是对象`);
   return value;
 }
 
-function uniqueIssues(values: { id: string; label: string }[]): PreflightIssue[] {
+function uniqueIssues(
+  values: { id: string; label: string }[],
+): PreflightIssue[] {
   const seen = new Set<string>();
   const issues: PreflightIssue[] = [];
   for (const value of values) {
@@ -95,15 +103,27 @@ function validateEntry(entry: ArtworkEntry): PreflightIssue[] {
   ];
   for (const [value, label] of requiredStrings) {
     if (typeof value !== "string" || value.trim() === "") {
-      issues.push({ severity: "error", code: "invalid-entry", message: `${label}不能为空` });
+      issues.push({
+        severity: "error",
+        code: "invalid-entry",
+        message: `${label}不能为空`,
+      });
     }
   }
 
   if (!Number.isInteger(entry.canvas?.width) || entry.canvas.width <= 0) {
-    issues.push({ severity: "error", code: "invalid-canvas", message: `${entry.name} 的画布宽度无效` });
+    issues.push({
+      severity: "error",
+      code: "invalid-canvas",
+      message: `${entry.name} 的画布宽度无效`,
+    });
   }
   if (!Number.isInteger(entry.canvas?.height) || entry.canvas.height <= 0) {
-    issues.push({ severity: "error", code: "invalid-canvas", message: `${entry.name} 的画布高度无效` });
+    issues.push({
+      severity: "error",
+      code: "invalid-canvas",
+      message: `${entry.name} 的画布高度无效`,
+    });
   }
   if (!entry.required && entry.optionalBehavior !== "keep-fixed") {
     issues.push({
@@ -113,9 +133,16 @@ function validateEntry(entry: ArtworkEntry): PreflightIssue[] {
     });
   }
   if (!entry.fit || !["strict", "cover", "contain"].includes(entry.fit.mode)) {
-    issues.push({ severity: "error", code: "invalid-fit", message: `${entry.name} 的素材适配模式无效` });
+    issues.push({
+      severity: "error",
+      code: "invalid-fit",
+      message: `${entry.name} 的素材适配模式无效`,
+    });
   } else if (entry.fit.mode === "contain") {
-    if (entry.fit.allowBlankArea !== true || entry.fit.background.trim() === "") {
+    if (
+      entry.fit.allowBlankArea !== true ||
+      entry.fit.background.trim() === ""
+    ) {
       issues.push({
         severity: "error",
         code: "unsafe-contain",
@@ -124,11 +151,22 @@ function validateEntry(entry: ArtworkEntry): PreflightIssue[] {
     }
   }
   if (entry.fit?.anchor?.kind === "offset") {
-    if (!Number.isFinite(entry.fit.anchor.x) || !Number.isFinite(entry.fit.anchor.y)) {
-      issues.push({ severity: "error", code: "invalid-anchor", message: `${entry.name} 的固定偏移无效` });
+    if (
+      !Number.isFinite(entry.fit.anchor.x) ||
+      !Number.isFinite(entry.fit.anchor.y)
+    ) {
+      issues.push({
+        severity: "error",
+        code: "invalid-anchor",
+        message: `${entry.name} 的固定偏移无效`,
+      });
     }
   } else if (entry.fit?.anchor?.kind !== "center") {
-    issues.push({ severity: "error", code: "invalid-anchor", message: `${entry.name} 的锚点无效` });
+    issues.push({
+      severity: "error",
+      code: "invalid-anchor",
+      message: `${entry.name} 的锚点无效`,
+    });
   }
   return issues;
 }
@@ -158,9 +196,19 @@ function validateOutputTarget(
   document: TemplateConfig["document"],
 ): PreflightIssue[] {
   const issues: PreflightIssue[] = [];
-  const editable = "productionKind" in target && target.productionKind === "editable-work-copy";
-  if (!target?.id?.trim() || !target.fileName?.trim() || invalidOutputFileName(target.fileName)) {
-    issues.push({ severity: "error", code: "invalid-output-name", message: `${label} 的 ID 或文件名无效` });
+  const editable =
+    "productionKind" in target &&
+    target.productionKind === "editable-work-copy";
+  if (
+    !target?.id?.trim() ||
+    !target.fileName?.trim() ||
+    invalidOutputFileName(target.fileName)
+  ) {
+    issues.push({
+      severity: "error",
+      code: "invalid-output-name",
+      message: `${label} 的 ID 或文件名无效`,
+    });
   }
   const region = target?.region;
   if (
@@ -174,44 +222,90 @@ function validateOutputTarget(
     region.width <= 0 ||
     region.height <= 0
   ) {
-    issues.push({ severity: "error", code: "invalid-output-region", message: `${label} 的固定导出区域无效` });
-  } else if (document && (region.x + region.width > document.width || region.y + region.height > document.height)) {
-    issues.push({ severity: "error", code: "output-region-outside-document", message: `${label} 的固定区域超出母版画布` });
+    issues.push({
+      severity: "error",
+      code: "invalid-output-region",
+      message: `${label} 的固定导出区域无效`,
+    });
+  } else if (
+    document &&
+    (region.x + region.width > document.width ||
+      region.y + region.height > document.height)
+  ) {
+    issues.push({
+      severity: "error",
+      code: "output-region-outside-document",
+      message: `${label} 的固定区域超出母版画布`,
+    });
   }
   const invalidVisiblePaths =
     !Array.isArray(target?.visibleLayerPaths) ||
     (!editable && target.visibleLayerPaths.length === 0) ||
     target.visibleLayerPaths.some(
-      (path) => !Array.isArray(path) || path.length === 0 || path.some((part) => !part?.trim()),
+      (path) =>
+        !Array.isArray(path) ||
+        path.length === 0 ||
+        path.some((part) => !part?.trim()),
     );
   if (invalidVisiblePaths) {
-    issues.push({ severity: "error", code: "invalid-output-visibility", message: `${label} 必须声明非空可见图层路径` });
+    issues.push({
+      severity: "error",
+      code: "invalid-output-visibility",
+      message: `${label} 必须声明非空可见图层路径`,
+    });
   }
   if (
     !Array.isArray(target?.markLayerPaths) ||
     target.markLayerPaths.some(
-      (path) => !Array.isArray(path) || path.length === 0 || path.some((part) => !part?.trim()),
+      (path) =>
+        !Array.isArray(path) ||
+        path.length === 0 ||
+        path.some((part) => !part?.trim()),
     )
   ) {
-    issues.push({ severity: "error", code: "invalid-output-marks", message: `${label} 的工艺标记图层路径无效` });
+    issues.push({
+      severity: "error",
+      code: "invalid-output-marks",
+      message: `${label} 的工艺标记图层路径无效`,
+    });
   }
-  if (!Number.isSafeInteger(target?.maximumFileBytes) || target.maximumFileBytes <= 0) {
-    issues.push({ severity: "error", code: "output-file-limit", message: `${label} 必须声明正整数文件大小上限` });
+  if (
+    !Number.isSafeInteger(target?.maximumFileBytes) ||
+    target.maximumFileBytes <= 0
+  ) {
+    issues.push({
+      severity: "error",
+      code: "output-file-limit",
+      message: `${label} 必须声明正整数文件大小上限`,
+    });
   }
 
   const profile = target?.profile;
   const format = profile?.format;
   const expectedExtension = format ? outputExtensions[format] : undefined;
   const actualExtension = target?.fileName?.split(".").pop()?.toLowerCase();
-  if (!expectedExtension || (actualExtension !== expectedExtension && !(format === "jpeg" && actualExtension === "jpeg"))) {
-    issues.push({ severity: "error", code: "output-extension", message: `${label} 的扩展名与格式不一致` });
+  if (
+    !expectedExtension ||
+    (actualExtension !== expectedExtension &&
+      !(format === "jpeg" && actualExtension === "jpeg"))
+  ) {
+    issues.push({
+      severity: "error",
+      code: "output-extension",
+      message: `${label} 的扩展名与格式不一致`,
+    });
   }
   const validCompression =
     (format === "png" && profile?.compression === "lossless") ||
     (format === "jpeg" && profile?.compression === "jpeg-high") ||
-    ((format === "psd" || format === "psb") && profile?.compression === "photoshop");
+    ((format === "psd" || format === "psb") &&
+      profile?.compression === "photoshop");
   if (!validCompression) {
-    issues.push({ severity: "error", code: "output-compression", message: `${label} 的格式与压缩组合无效` });
+    issues.push({
+      severity: "error",
+      code: "output-compression",
+      message: `${label} 的格式与压缩组合无效`,
+    });
   }
   if (
     !profile ||
@@ -220,25 +314,45 @@ function validateOutputTarget(
     !["rgb", "cmyk"].includes(profile.colorMode) ||
     ![8, 16].includes(profile.bitDepth)
   ) {
-    issues.push({ severity: "error", code: "output-metadata", message: `${label} 的 PPI、色彩模式或位深无效` });
+    issues.push({
+      severity: "error",
+      code: "output-metadata",
+      message: `${label} 的 PPI、色彩模式或位深无效`,
+    });
   }
   if (
     !profile?.icc ||
     !["none", "embed"].includes(profile.icc.mode) ||
     (profile.icc.mode === "embed" && !profile.icc.profile?.trim())
   ) {
-    issues.push({ severity: "error", code: "output-icc", message: `${label} 的 ICC 规则无效` });
+    issues.push({
+      severity: "error",
+      code: "output-icc",
+      message: `${label} 的 ICC 规则无效`,
+    });
   }
   if (
     !profile?.background ||
     !["transparent", "solid"].includes(profile.background.kind) ||
-    (profile.background.kind === "solid" && !profile.background.color?.trim()) ||
+    (profile.background.kind === "solid" &&
+      !profile.background.color?.trim()) ||
     (format === "jpeg" && profile.background.kind !== "solid")
   ) {
-    issues.push({ severity: "error", code: "output-background", message: `${label} 的透明或底色规则无效` });
+    issues.push({
+      severity: "error",
+      code: "output-background",
+      message: `${label} 的透明或底色规则无效`,
+    });
   }
-  if (typeof profile?.includeGuides !== "boolean" || typeof profile.includeMarks !== "boolean") {
-    issues.push({ severity: "error", code: "output-marks", message: `${label} 必须明确辅助线和工艺标记规则` });
+  if (
+    typeof profile?.includeGuides !== "boolean" ||
+    typeof profile.includeMarks !== "boolean"
+  ) {
+    issues.push({
+      severity: "error",
+      code: "output-marks",
+      message: `${label} 必须明确辅助线和工艺标记规则`,
+    });
   }
   return issues;
 }
@@ -247,22 +361,41 @@ function validateOutputConfig(template: TemplateConfig): PreflightIssue[] {
   const output = template.output;
   if (
     !output?.capabilityProfileId?.trim() ||
-    !["pieces", "combined", "pieces-and-combined"].includes(output.productionMode) ||
+    !["pieces", "combined", "pieces-and-combined"].includes(
+      output.productionMode,
+    ) ||
     !output.preview ||
     !Array.isArray(output.production)
   ) {
-    return [{ severity: "error", code: "output-config", message: "模板必须声明输出能力、预览和生产配置" }];
+    return [
+      {
+        severity: "error",
+        code: "output-config",
+        message: "模板必须声明输出能力、预览和生产配置",
+      },
+    ];
   }
   const issues = [
     ...validateOutputTarget(output.preview, "预览输出", template.document),
     ...output.production.flatMap((target) =>
-      validateOutputTarget(target, `生产输出 ${target?.id ?? "未知"}`, template.document),
+      validateOutputTarget(
+        target,
+        `生产输出 ${target?.id ?? "未知"}`,
+        template.document,
+      ),
     ),
   ];
   const allTargets = [output.preview, ...output.production];
   issues.push(
-    ...uniqueIssues(allTargets.map((target) => ({ id: target.id, label: "输出目标" }))),
-    ...uniqueIssues(allTargets.map((target) => ({ id: target.fileName, label: "输出文件名" }))),
+    ...uniqueIssues(
+      allTargets.map((target) => ({ id: target.id, label: "输出目标" })),
+    ),
+    ...uniqueIssues(
+      allTargets.map((target) => ({
+        id: target.fileName,
+        label: "输出文件名",
+      })),
+    ),
   );
   const pieceIds = new Set(template.garmentPieces.map((piece) => piece.id));
   const outputPieces = new Set<string>();
@@ -277,14 +410,22 @@ function validateOutputConfig(template: TemplateConfig): PreflightIssue[] {
         });
       }
       if (outputPieces.has(target.garmentPieceId)) {
-        issues.push({ severity: "error", code: "duplicate-output-piece", message: `裁片 ${target.garmentPieceId} 有重复生产输出` });
+        issues.push({
+          severity: "error",
+          code: "duplicate-output-piece",
+          message: `裁片 ${target.garmentPieceId} 有重复生产输出`,
+        });
       }
       outputPieces.add(target.garmentPieceId);
     } else if (target.productionKind === "combined") {
       combinedCount += 1;
     } else if (target.productionKind === "editable-work-copy") {
       if (target.profile.format !== "psd" && target.profile.format !== "psb") {
-        issues.push({ severity: "error", code: "editable-output-format", message: `可编辑工作副本 ${target.id} 必须使用 PSD 或 PSB` });
+        issues.push({
+          severity: "error",
+          code: "editable-output-format",
+          message: `可编辑工作副本 ${target.id} 必须使用 PSD 或 PSB`,
+        });
       }
       if (
         target.preserveAllLayers !== true ||
@@ -297,7 +438,8 @@ function validateOutputConfig(template: TemplateConfig): PreflightIssue[] {
         target.profile.bitDepth !== template.document.bitDepth ||
         (template.document.iccProfile === null
           ? target.profile.icc.mode !== "none"
-          : target.profile.icc.mode !== "embed" || target.profile.icc.profile !== template.document.iccProfile) ||
+          : target.profile.icc.mode !== "embed" ||
+            target.profile.icc.profile !== template.document.iccProfile) ||
         target.profile.includeGuides !== true ||
         target.profile.includeMarks !== true ||
         target.visibleLayerPaths.length !== 0 ||
@@ -311,21 +453,44 @@ function validateOutputConfig(template: TemplateConfig): PreflightIssue[] {
       }
     }
   }
-  if (output.productionMode === "pieces" || output.productionMode === "pieces-and-combined") {
+  if (
+    output.productionMode === "pieces" ||
+    output.productionMode === "pieces-and-combined"
+  ) {
     for (const piece of template.garmentPieces) {
       if (!outputPieces.has(piece.id)) {
-        issues.push({ severity: "error", code: "missing-output-piece", message: `裁片 ${piece.name} 缺少生产输出` });
+        issues.push({
+          severity: "error",
+          code: "missing-output-piece",
+          message: `裁片 ${piece.name} 缺少生产输出`,
+        });
       }
     }
   }
-  if ((output.productionMode === "combined" || output.productionMode === "pieces-and-combined") && combinedCount === 0) {
-    issues.push({ severity: "error", code: "missing-combined-output", message: "当前生产模式必须声明合版输出" });
+  if (
+    (output.productionMode === "combined" ||
+      output.productionMode === "pieces-and-combined") &&
+    combinedCount === 0
+  ) {
+    issues.push({
+      severity: "error",
+      code: "missing-combined-output",
+      message: "当前生产模式必须声明合版输出",
+    });
   }
   if (output.productionMode === "combined" && outputPieces.size > 0) {
-    issues.push({ severity: "error", code: "unexpected-piece-output", message: "仅合版模式不能同时声明分片输出" });
+    issues.push({
+      severity: "error",
+      code: "unexpected-piece-output",
+      message: "仅合版模式不能同时声明分片输出",
+    });
   }
   if (output.productionMode === "pieces" && combinedCount > 0) {
-    issues.push({ severity: "error", code: "unexpected-combined-output", message: "仅分片模式不能同时声明合版输出" });
+    issues.push({
+      severity: "error",
+      code: "unexpected-combined-output",
+      message: "仅分片模式不能同时声明合版输出",
+    });
   }
   return issues;
 }
@@ -333,7 +498,11 @@ function validateOutputConfig(template: TemplateConfig): PreflightIssue[] {
 export function validateTemplate(template: TemplateConfig): PreflightIssue[] {
   const issues: PreflightIssue[] = [];
   if (template.schemaVersion !== 2) {
-    issues.push({ severity: "error", code: "schema-version", message: "只支持模板结构版本 2" });
+    issues.push({
+      severity: "error",
+      code: "schema-version",
+      message: "只支持模板结构版本 2",
+    });
   }
   if (
     !template.templateId?.trim() ||
@@ -358,11 +527,20 @@ export function validateTemplate(template: TemplateConfig): PreflightIssue[] {
     !["rgb", "cmyk"].includes(template.document.colorMode) ||
     ![8, 16].includes(template.document.bitDepth) ||
     (template.document.iccProfile !== null &&
-      (typeof template.document.iccProfile !== "string" || template.document.iccProfile.trim() === ""))
+      (typeof template.document.iccProfile !== "string" ||
+        template.document.iccProfile.trim() === ""))
   ) {
-    issues.push({ severity: "error", code: "document-spec", message: "母版像素尺寸、PPI、色彩模式和位深必须明确有效" });
+    issues.push({
+      severity: "error",
+      code: "document-spec",
+      message: "母版像素尺寸、PPI、色彩模式和位深必须明确有效",
+    });
   }
-  if (template.garmentPieces.length === 0 || template.artworkEntries.length === 0 || template.instances.length === 0) {
+  if (
+    template.garmentPieces.length === 0 ||
+    template.artworkEntries.length === 0 ||
+    template.instances.length === 0
+  ) {
     issues.push({
       severity: "error",
       code: "empty-template",
@@ -371,11 +549,24 @@ export function validateTemplate(template: TemplateConfig): PreflightIssue[] {
   }
 
   issues.push(
-    ...uniqueIssues(template.garmentPieces.map((piece) => ({ id: piece.id, label: "裁片" }))),
-    ...uniqueIssues(template.artworkEntries.map((entry) => ({ id: entry.id, label: "素材入口" }))),
-    ...uniqueIssues(template.instances.map((instance) => ({ id: instance.id, label: "实例" }))),
+    ...uniqueIssues(
+      template.garmentPieces.map((piece) => ({ id: piece.id, label: "裁片" })),
+    ),
+    ...uniqueIssues(
+      template.artworkEntries.map((entry) => ({
+        id: entry.id,
+        label: "素材入口",
+      })),
+    ),
+    ...uniqueIssues(
+      template.instances.map((instance) => ({
+        id: instance.id,
+        label: "实例",
+      })),
+    ),
   );
-  for (const entry of template.artworkEntries) issues.push(...validateEntry(entry));
+  for (const entry of template.artworkEntries)
+    issues.push(...validateEntry(entry));
   issues.push(...validateOutputConfig(template));
 
   const pieceIds = new Set(template.garmentPieces.map((piece) => piece.id));
@@ -405,7 +596,9 @@ export function validateTemplate(template: TemplateConfig): PreflightIssue[] {
         message: `实例 ${instance.id} 缺少完整图层路径`,
       });
     } else {
-      const normalizedPath = instance.layerPath.map((part) => part.toLowerCase()).join("/");
+      const normalizedPath = instance.layerPath
+        .map((part) => part.toLowerCase())
+        .join("/");
       const existing = paths.get(normalizedPath);
       if (existing) {
         issues.push({
@@ -442,7 +635,10 @@ export function validateTemplate(template: TemplateConfig): PreflightIssue[] {
         message: `共享内容源 ${entry.contentSourceId} 被分配了不同输入：${existing.inputKey} 与 ${entry.inputKey}`,
       });
     }
-    if (existing.canvas.width !== entry.canvas.width || existing.canvas.height !== entry.canvas.height) {
+    if (
+      existing.canvas.width !== entry.canvas.width ||
+      existing.canvas.height !== entry.canvas.height
+    ) {
       issues.push({
         severity: "error",
         code: "shared-canvas-conflict",
@@ -549,7 +745,12 @@ function preflightGroup(
       });
       continue;
     }
-    if (!Number.isInteger(file.width) || !Number.isInteger(file.height) || file.width! <= 0 || file.height! <= 0) {
+    if (
+      !Number.isInteger(file.width) ||
+      !Number.isInteger(file.height) ||
+      file.width! <= 0 ||
+      file.height! <= 0
+    ) {
       issues.push({
         severity: "error",
         code: "missing-dimensions",
@@ -560,7 +761,10 @@ function preflightGroup(
       continue;
     }
     if (entry.fit.mode === "strict") {
-      if (file.width !== entry.canvas.width || file.height !== entry.canvas.height) {
+      if (
+        file.width !== entry.canvas.width ||
+        file.height !== entry.canvas.height
+      ) {
         issues.push({
           severity: "error",
           code: "strict-size-mismatch",
@@ -574,13 +778,25 @@ function preflightGroup(
     if (entry.fit.anchor.kind === "offset") {
       const scale =
         entry.fit.mode === "contain"
-          ? Math.min(entry.canvas.width / file.width!, entry.canvas.height / file.height!)
-          : Math.max(entry.canvas.width / file.width!, entry.canvas.height / file.height!);
+          ? Math.min(
+              entry.canvas.width / file.width!,
+              entry.canvas.height / file.height!,
+            )
+          : Math.max(
+              entry.canvas.width / file.width!,
+              entry.canvas.height / file.height!,
+            );
       const scaledWidth = file.width! * scale;
       const scaledHeight = file.height! * scale;
       const maxX = Math.max(0, Math.abs(scaledWidth - entry.canvas.width) / 2);
-      const maxY = Math.max(0, Math.abs(scaledHeight - entry.canvas.height) / 2);
-      if (Math.abs(entry.fit.anchor.x) > maxX || Math.abs(entry.fit.anchor.y) > maxY) {
+      const maxY = Math.max(
+        0,
+        Math.abs(scaledHeight - entry.canvas.height) / 2,
+      );
+      if (
+        Math.abs(entry.fit.anchor.x) > maxX ||
+        Math.abs(entry.fit.anchor.y) > maxY
+      ) {
         issues.push({
           severity: "error",
           code: "offset-out-of-range",
@@ -605,7 +821,10 @@ function preflightGroup(
 
   for (const file of files) {
     const parts = fileParts(file.name);
-    if (supportedExtensions.has(parts.extension) && !matchedNames.has(file.name)) {
+    if (
+      supportedExtensions.has(parts.extension) &&
+      !matchedNames.has(file.name)
+    ) {
       issues.push({
         severity: "warning",
         code: "extra-file",
@@ -617,7 +836,9 @@ function preflightGroup(
 
   return {
     groupName,
-    status: issues.some((issue) => issue.severity === "error") ? "invalid" : "valid",
+    status: issues.some((issue) => issue.severity === "error")
+      ? "invalid"
+      : "valid",
     assignments,
     issues,
   };
@@ -635,14 +856,19 @@ export function preflightGroups(payload: PreflightPayload): PreflightReport {
       artworkEntryCount: payload.template.artworkEntries.length,
       instanceCount: payload.template.instances.length,
       mappings: payload.template.instances.map((instance) => {
-        const piece = payload.template.garmentPieces.find((item) => item.id === instance.garmentPieceId);
-        const entry = payload.template.artworkEntries.find((item) => item.id === instance.artworkEntryId);
+        const piece = payload.template.garmentPieces.find(
+          (item) => item.id === instance.garmentPieceId,
+        );
+        const entry = payload.template.artworkEntries.find(
+          (item) => item.id === instance.artworkEntryId,
+        );
         return `${piece?.name ?? instance.garmentPieceId} ← ${entry?.name ?? instance.artworkEntryId} · ${instance.layerPath.join("/")}`;
       }),
     },
     groups,
     validGroupCount: groups.filter((group) => group.status === "valid").length,
-    invalidGroupCount: groups.filter((group) => group.status === "invalid").length,
+    invalidGroupCount: groups.filter((group) => group.status === "invalid")
+      .length,
   };
 }
 
@@ -665,7 +891,12 @@ function parseFit(value: unknown): FitRule {
     if (requireBoolean(value, "allowBlankArea") !== true) {
       throw new Error("完整放入必须明确允许空白区域");
     }
-    return { mode, anchor, allowBlankArea: true, background: requireString(value, "background") };
+    return {
+      mode,
+      anchor,
+      allowBlankArea: true,
+      background: requireString(value, "background"),
+    };
   }
   throw new Error(`不支持的素材适配模式：${mode}`);
 }
@@ -702,7 +933,8 @@ function parseArtworkEntry(value: unknown): ArtworkEntry {
 function parseArtworkInstance(value: unknown): ArtworkInstance {
   if (!isRecord(value)) throw new Error("实例必须是对象");
   const layerPath = requireArray(value, "layerPath").map((part) => {
-    if (typeof part !== "string" || part.trim() === "") throw new Error("图层路径必须由非空字符串组成");
+    if (typeof part !== "string" || part.trim() === "")
+      throw new Error("图层路径必须由非空字符串组成");
     return part;
   });
   return {
@@ -713,31 +945,50 @@ function parseArtworkInstance(value: unknown): ArtworkInstance {
   };
 }
 
-function requireOneOf<T extends string>(record: Record<string, unknown>, key: string, allowed: readonly T[]): T {
+function requireOneOf<T extends string>(
+  record: Record<string, unknown>,
+  key: string,
+  allowed: readonly T[],
+): T {
   const value = requireString(record, key);
-  if (!allowed.includes(value as T)) throw new Error(`字段 ${key} 的值不受支持：${value}`);
+  if (!allowed.includes(value as T))
+    throw new Error(`字段 ${key} 的值不受支持：${value}`);
   return value as T;
 }
 
 function parseOutputIcc(value: unknown): OutputIccPolicy {
   if (!isRecord(value)) throw new Error("ICC 规则必须是对象");
   const mode = requireOneOf(value, "mode", ["none", "embed"] as const);
-  return mode === "embed" ? { mode, profile: requireString(value, "profile") } : { mode };
+  return mode === "embed"
+    ? { mode, profile: requireString(value, "profile") }
+    : { mode };
 }
 
 function parseOutputBackground(value: unknown): OutputBackground {
   if (!isRecord(value)) throw new Error("输出背景规则必须是对象");
   const kind = requireOneOf(value, "kind", ["transparent", "solid"] as const);
-  return kind === "solid" ? { kind, color: requireString(value, "color") } : { kind };
+  return kind === "solid"
+    ? { kind, color: requireString(value, "color") }
+    : { kind };
 }
 
 function parseOutputProfile(value: unknown): OutputRenderProfile {
   if (!isRecord(value)) throw new Error("输出配置必须是对象");
   const bitDepth = requireNumber(value, "bitDepth");
-  if (bitDepth !== 8 && bitDepth !== 16) throw new Error("输出位深只支持 8 或 16");
+  if (bitDepth !== 8 && bitDepth !== 16)
+    throw new Error("输出位深只支持 8 或 16");
   return {
-    format: requireOneOf(value, "format", ["png", "jpeg", "psd", "psb"] as const),
-    compression: requireOneOf(value, "compression", ["lossless", "jpeg-high", "photoshop"] as const),
+    format: requireOneOf(value, "format", [
+      "png",
+      "jpeg",
+      "psd",
+      "psb",
+    ] as const),
+    compression: requireOneOf(value, "compression", [
+      "lossless",
+      "jpeg-high",
+      "photoshop",
+    ] as const),
     ppi: requireNumber(value, "ppi"),
     colorMode: requireOneOf(value, "colorMode", ["rgb", "cmyk"] as const),
     bitDepth,
@@ -751,17 +1002,23 @@ function parseOutputProfile(value: unknown): OutputRenderProfile {
 function parseOutputTarget(value: unknown): OutputTarget {
   if (!isRecord(value)) throw new Error("输出目标必须是对象");
   const region = requireRecord(value, "region");
-  const visibleLayerPaths = requireArray(value, "visibleLayerPaths").map((path) => {
-    if (!Array.isArray(path) || path.length === 0) throw new Error("可见图层路径必须是非空数组");
-    return path.map((part) => {
-      if (typeof part !== "string" || part.trim() === "") throw new Error("可见图层路径必须由非空字符串组成");
-      return part;
-    });
-  });
+  const visibleLayerPaths = requireArray(value, "visibleLayerPaths").map(
+    (path) => {
+      if (!Array.isArray(path) || path.length === 0)
+        throw new Error("可见图层路径必须是非空数组");
+      return path.map((part) => {
+        if (typeof part !== "string" || part.trim() === "")
+          throw new Error("可见图层路径必须由非空字符串组成");
+        return part;
+      });
+    },
+  );
   const markLayerPaths = requireArray(value, "markLayerPaths").map((path) => {
-    if (!Array.isArray(path) || path.length === 0) throw new Error("工艺标记图层路径必须是非空数组");
+    if (!Array.isArray(path) || path.length === 0)
+      throw new Error("工艺标记图层路径必须是非空数组");
     return path.map((part) => {
-      if (typeof part !== "string" || part.trim() === "") throw new Error("工艺标记图层路径必须由非空字符串组成");
+      if (typeof part !== "string" || part.trim() === "")
+        throw new Error("工艺标记图层路径必须由非空字符串组成");
       return part;
     });
   });
@@ -783,13 +1040,26 @@ function parseOutputTarget(value: unknown): OutputTarget {
 
 function parseProductionOutputTarget(value: unknown): ProductionOutputTarget {
   if (!isRecord(value)) throw new Error("生产输出目标必须是对象");
-  const productionKind = requireOneOf(value, "productionKind", ["piece", "combined", "editable-work-copy"] as const);
+  const productionKind = requireOneOf(value, "productionKind", [
+    "piece",
+    "combined",
+    "editable-work-copy",
+  ] as const);
   if (productionKind === "piece") {
-    return { ...parseOutputTarget(value), productionKind, garmentPieceId: requireString(value, "garmentPieceId") };
+    return {
+      ...parseOutputTarget(value),
+      productionKind,
+      garmentPieceId: requireString(value, "garmentPieceId"),
+    };
   }
   if (productionKind === "editable-work-copy") {
-    if (requireBoolean(value, "preserveAllLayers") !== true) throw new Error("可编辑工作副本必须保留全部图层");
-    return { ...parseOutputTarget(value), productionKind, preserveAllLayers: true };
+    if (requireBoolean(value, "preserveAllLayers") !== true)
+      throw new Error("可编辑工作副本必须保留全部图层");
+    return {
+      ...parseOutputTarget(value),
+      productionKind,
+      preserveAllLayers: true,
+    };
   }
   return { ...parseOutputTarget(value), productionKind };
 }
@@ -798,18 +1068,28 @@ function parseTemplateOutput(value: unknown): TemplateOutputConfig {
   if (!isRecord(value)) throw new Error("模板输出配置必须是对象");
   return {
     capabilityProfileId: requireString(value, "capabilityProfileId"),
-    productionMode: requireOneOf(value, "productionMode", ["pieces", "combined", "pieces-and-combined"] as const),
+    productionMode: requireOneOf(value, "productionMode", [
+      "pieces",
+      "combined",
+      "pieces-and-combined",
+    ] as const),
     preview: parseOutputTarget(value.preview),
-    production: requireArray(value, "production").map(parseProductionOutputTarget),
+    production: requireArray(value, "production").map(
+      parseProductionOutputTarget,
+    ),
   };
 }
 
 function parseTemplateDocument(value: unknown): TemplateConfig["document"] {
   if (!isRecord(value)) throw new Error("母版文档规格必须是对象");
   const bitDepth = requireNumber(value, "bitDepth");
-  if (bitDepth !== 8 && bitDepth !== 16) throw new Error("母版位深只支持 8 或 16");
+  if (bitDepth !== 8 && bitDepth !== 16)
+    throw new Error("母版位深只支持 8 或 16");
   const iccProfile = value.iccProfile;
-  if (iccProfile !== null && (typeof iccProfile !== "string" || iccProfile.trim() === "")) {
+  if (
+    iccProfile !== null &&
+    (typeof iccProfile !== "string" || iccProfile.trim() === "")
+  ) {
     throw new Error("母版 ICC 必须是非空字符串或 null");
   }
   return {
@@ -830,19 +1110,35 @@ function parseInputFile(value: unknown): InputFileSnapshot {
   const sourceRef = value.sourceRef;
   const fingerprint = value.fingerprint;
   const metadataError = value.metadataError;
-  if (fingerprint !== undefined && (typeof fingerprint !== "string" || fingerprint.trim() === "")) {
+  if (
+    fingerprint !== undefined &&
+    (typeof fingerprint !== "string" || fingerprint.trim() === "")
+  ) {
     throw new Error("字段 fingerprint 必须是非空字符串");
   }
-  if (sourceRef !== undefined && (typeof sourceRef !== "string" || sourceRef.trim() === "")) {
+  if (
+    sourceRef !== undefined &&
+    (typeof sourceRef !== "string" || sourceRef.trim() === "")
+  ) {
     throw new Error("字段 sourceRef 必须是非空字符串");
   }
   if (metadataError !== undefined && typeof metadataError !== "string") {
     throw new Error("字段 metadataError 必须是字符串");
   }
-  return { name: requireString(value, "name"), width, height, ppi, sourceRef, fingerprint, metadataError };
+  return {
+    name: requireString(value, "name"),
+    width,
+    height,
+    ppi,
+    sourceRef,
+    fingerprint,
+    metadataError,
+  };
 }
 
-function parseTemplateRecord(template: Record<string, unknown>): TemplateConfig {
+function parseTemplateRecord(
+  template: Record<string, unknown>,
+): TemplateConfig {
   const schemaVersion = requireNumber(template, "schemaVersion");
   if (schemaVersion !== 2) throw new Error("只支持模板结构版本 2");
   return {
@@ -852,8 +1148,12 @@ function parseTemplateRecord(template: Record<string, unknown>): TemplateConfig 
     masterFingerprint: requireString(template, "masterFingerprint"),
     masterSourceRef: requireString(template, "masterSourceRef"),
     document: parseTemplateDocument(template.document),
-    garmentPieces: requireArray(template, "garmentPieces").map(parseGarmentPiece),
-    artworkEntries: requireArray(template, "artworkEntries").map(parseArtworkEntry),
+    garmentPieces: requireArray(template, "garmentPieces").map(
+      parseGarmentPiece,
+    ),
+    artworkEntries: requireArray(template, "artworkEntries").map(
+      parseArtworkEntry,
+    ),
     instances: requireArray(template, "instances").map(parseArtworkInstance),
     output: parseTemplateOutput(template.output),
   };

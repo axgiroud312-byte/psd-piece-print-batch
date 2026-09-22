@@ -45,7 +45,9 @@ describe("UXP persistent batch access", () => {
     fileSystem.entries.set("output", file);
     const access = new UxpBatchAccess(fileSystem);
 
-    await expect(access.validate({ master: "master", input: "input", output: "output" })).resolves.toEqual({
+    await expect(
+      access.validate({ master: "master", input: "input", output: "output" }),
+    ).resolves.toEqual({
       valid: false,
       invalid: ["output"],
     });
@@ -62,6 +64,8 @@ describe("UXP persistent batch access", () => {
   it("leaves the existing grants unchanged when the user cancels reselection", async () => {
     const fileSystem = new FakePersistentFileSystem();
     const access = new UxpBatchAccess(fileSystem);
-    await expect(access.reselect({ master: "m", input: "i", output: "o" }, ["input"])).resolves.toBeUndefined();
+    await expect(
+      access.reselect({ master: "m", input: "i", output: "o" }, ["input"]),
+    ).resolves.toBeUndefined();
   });
 });

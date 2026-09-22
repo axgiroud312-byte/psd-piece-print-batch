@@ -1,10 +1,18 @@
 import { MemoryBatchAdapter } from "../adapters/memory-batch-adapter";
-import { selectAndScanInputRoot, selectTemplateConfigJson } from "../adapters/uxp-input-scanner";
+import {
+  selectAndScanInputRoot,
+  selectTemplateConfigJson,
+} from "../adapters/uxp-input-scanner";
+import { PLUGIN_VERSION } from "../config";
 import type { InputGroupSnapshot, TemplateConfig } from "../domain/types";
 import type { BatchRunRecord } from "../workflow/run-batch";
 import { fingerprintBytes } from "../workflow/fingerprint";
 import { runSingleGroup } from "../workflow/run-group";
-import type { CancellationToken, GroupRunResult, StageEvent } from "../workflow/types";
+import type {
+  CancellationToken,
+  GroupRunResult,
+  StageEvent,
+} from "../workflow/types";
 
 export interface OperatorCapability {
   productionEnabled: boolean;
@@ -55,7 +63,9 @@ export interface OperatorServices {
   loadWorkspace(): Promise<WorkspaceLoadResult>;
   saveWorkspace(workspace: PersistedOperatorWorkspace): Promise<void>;
   selectTemplateJson(): Promise<string | null>;
-  selectAndVerifyMaster(template: TemplateConfig): Promise<SelectedMaster | null>;
+  selectAndVerifyMaster(
+    template: TemplateConfig,
+  ): Promise<SelectedMaster | null>;
   selectInputGroups(): Promise<InputGroupSnapshot[] | null>;
   runTrial(
     input: { template: TemplateConfig; group: InputGroupSnapshot },
@@ -82,7 +92,10 @@ export interface OperatorServices {
   }>;
   recoverRun(runId: string): Promise<BatchRunRecord>;
   reselectRunAccess(runId: string): Promise<BatchRunRecord | null>;
-  confirmManualCleanup(runId: string, groupName: string): Promise<BatchRunRecord>;
+  confirmManualCleanup(
+    runId: string,
+    groupName: string,
+  ): Promise<BatchRunRecord>;
 }
 
 const WORKSPACE_KEY = "psd-piece-print-batch.operator-workspace.v1";
@@ -98,21 +111,26 @@ function isWorkspace(value: unknown): value is PersistedOperatorWorkspace {
       typeof workspace.draft.templateFingerprint !== "string" ||
       typeof workspace.draft.savedAt !== "string" ||
       "masterSourceRef" in workspace.draft.template
-    ) return false;
+    )
+      return false;
   }
-  if (workspace.trial !== undefined && (
-    typeof workspace.trial.templateFingerprint !== "string" ||
-    typeof workspace.trial.taskFingerprint !== "string" ||
-    typeof workspace.trial.groupName !== "string" ||
-    typeof workspace.trial.completedAt !== "string" ||
-    typeof workspace.trial.approved !== "boolean"
-  )) return false;
-  if (workspace.latestRun !== undefined && (
-    workspace.latestRun.schemaVersion !== 1 ||
-    typeof workspace.latestRun.runId !== "string" ||
-    !Array.isArray(workspace.latestRun.groups) ||
-    "accessGrants" in workspace.latestRun
-  )) return false;
+  if (
+    workspace.trial !== undefined &&
+    (typeof workspace.trial.templateFingerprint !== "string" ||
+      typeof workspace.trial.taskFingerprint !== "string" ||
+      typeof workspace.trial.groupName !== "string" ||
+      typeof workspace.trial.completedAt !== "string" ||
+      typeof workspace.trial.approved !== "boolean")
+  )
+    return false;
+  if (
+    workspace.latestRun !== undefined &&
+    (workspace.latestRun.schemaVersion !== 1 ||
+      typeof workspace.latestRun.runId !== "string" ||
+      !Array.isArray(workspace.latestRun.groups) ||
+      "accessGrants" in workspace.latestRun)
+  )
+    return false;
   return true;
 }
 
@@ -123,23 +141,32 @@ interface UxpMasterFile {
 
 interface UxpMasterStorage {
   localFileSystem: {
-    getFileForOpening(options: { types: string[] }): Promise<UxpMasterFile | UxpMasterFile[] | null>;
+    getFileForOpening(options: {
+      types: string[];
+    }): Promise<UxpMasterFile | UxpMasterFile[] | null>;
     createPersistentToken(entry: UxpMasterFile): Promise<string>;
   };
   formats: { binary: string };
 }
 
-async function selectAndVerifyMaster(template: TemplateConfig): Promise<SelectedMaster | null> {
+async function selectAndVerifyMaster(
+  template: TemplateConfig,
+): Promise<SelectedMaster | null> {
   const storage = require("uxp").storage as UxpMasterStorage;
-  const selected = await storage.localFileSystem.getFileForOpening({ types: ["psd", "psb"] });
+  const selected = await storage.localFileSystem.getFileForOpening({
+    types: ["psd", "psb"],
+  });
   const file = Array.isArray(selected) ? selected[0] : selected;
   if (!file) return null;
   if (!file.isFile) throw new Error("母版必须选择 PSD 或 PSB 文件");
   const data = await file.read({ format: storage.formats.binary });
-  if (!(data instanceof ArrayBuffer)) throw new Error("母版读取结果不是二进制内容");
+  if (!(data instanceof ArrayBuffer))
+    throw new Error("母版读取结果不是二进制内容");
   const fingerprint = fingerprintBytes(new Uint8Array(data));
   if (fingerprint !== template.masterFingerprint) {
-    throw new Error("所选母版与配置登记的内容指纹不一致，请选择正确母版或重新登记模板");
+    throw new Error(
+      "所选母版与配置登记的内容指纹不一致，请选择正确母版或重新登记模板",
+    );
   }
   return {
     sourceRef: await storage.localFileSystem.createPersistentToken(file),
@@ -153,17 +180,24 @@ export function createDefaultOperatorServices(): OperatorServices {
       productionEnabled: false,
       label: "待 M0 验证",
       title: "操作流可检查，真实生产仍保持锁定",
-      advice: "请先提供真实母版、三组代表素材、认可输出和工厂规范，并在目标 Photoshop 版本完成 M0。诊断试套不能替代真实试套。",
+      advice:
+        "请先提供真实母版、三组代表素材、认可输出和工厂规范，并在目标 Photoshop 版本完成 M0。诊断试套不能替代真实试套。",
     },
     async loadWorkspace() {
       try {
         const serialized = localStorage.getItem(WORKSPACE_KEY);
         if (!serialized) return {};
         const parsed: unknown = JSON.parse(serialized);
-        if (!isWorkspace(parsed)) return { failure: "已保存的操作草稿结构无效，请重新登记模板" };
+        if (!isWorkspace(parsed))
+          return { failure: "已保存的操作草稿结构无效，请重新登记模板" };
         return { workspace: parsed };
       } catch (error) {
-        return { failure: error instanceof Error ? `无法恢复操作草稿：${error.message}` : "无法恢复操作草稿" };
+        return {
+          failure:
+            error instanceof Error
+              ? `无法恢复操作草稿：${error.message}`
+              : "无法恢复操作草稿",
+        };
       }
     },
     async saveWorkspace(workspace) {
@@ -176,7 +210,7 @@ export function createDefaultOperatorServices(): OperatorServices {
       return runSingleGroup(
         {
           runId: `diagnostic-trial-${Date.now()}`,
-          pluginVersion: "0.1.0",
+          pluginVersion: PLUGIN_VERSION,
           template: input.template,
           group: input.group,
         },

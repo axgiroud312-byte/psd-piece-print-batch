@@ -11,9 +11,21 @@ import type {
   StageEvent,
 } from "./types";
 
-export type BatchGroupState = "queued" | "running" | "completed" | "failed" | "interrupted" | "review-required";
-export type BatchStatus = "running" | "completed" | "completed-with-errors" | "interrupted" | "access-required";
-export type InterruptionReason = "cancelled" | "crash" | "not-started" | "access-required" | "batch-stopped";
+export type BatchGroupState =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "interrupted"
+  | "review-required";
+export type BatchStatus =
+  | "running"
+  | "completed"
+  | "completed-with-errors"
+  | "interrupted"
+  | "access-required";
+export type InterruptionReason =
+  "cancelled" | "crash" | "not-started" | "access-required" | "batch-stopped";
 
 export interface BatchAccessGrants {
   master: string;
@@ -64,7 +76,11 @@ export interface BatchRunStore {
 }
 
 export interface BatchAccessValidator {
-  validate(grants: BatchAccessGrants): Promise<{ valid: true } | { valid: false; invalid: Array<keyof BatchAccessGrants> }>;
+  validate(
+    grants: BatchAccessGrants,
+  ): Promise<
+    { valid: true } | { valid: false; invalid: Array<keyof BatchAccessGrants> }
+  >;
 }
 
 export type CommitReconciliation =
@@ -129,12 +145,19 @@ function assertUniqueGroups(groups: InputGroupSnapshot[]): void {
   const names = new Set<string>();
   for (const group of groups) {
     const normalized = group.name.toLowerCase();
-    if (names.has(normalized)) throw new BatchStoppingError("duplicate-group-name", `素材组名称重复：${group.name}`);
+    if (names.has(normalized))
+      throw new BatchStoppingError(
+        "duplicate-group-name",
+        `素材组名称重复：${group.name}`,
+      );
     names.add(normalized);
   }
 }
 
-function createRecord(request: BatchRunRequest, now: () => string): BatchRunRecord {
+function createRecord(
+  request: BatchRunRequest,
+  now: () => string,
+): BatchRunRecord {
   assertUniqueGroups(request.groups);
   const at = now();
   return {
@@ -150,14 +173,21 @@ function createRecord(request: BatchRunRequest, now: () => string): BatchRunReco
     accessGrants: { ...request.accessGrants },
     groups: request.groups.map((group) => ({
       groupName: group.name,
-      taskFingerprint: createTaskFingerprint(request.template, group, request.pluginVersion),
+      taskFingerprint: createTaskFingerprint(
+        request.template,
+        group,
+        request.pluginVersion,
+      ),
       state: "queued",
       attemptCount: 0,
     })),
   };
 }
 
-function markRemainingInterrupted(record: BatchRunRecord, reason: InterruptionReason): void {
+function markRemainingInterrupted(
+  record: BatchRunRecord,
+  reason: InterruptionReason,
+): void {
   for (const group of record.groups) {
     if (group.state === "queued") {
       group.state = "interrupted";
@@ -167,11 +197,19 @@ function markRemainingInterrupted(record: BatchRunRecord, reason: InterruptionRe
 }
 
 function finishStatus(record: BatchRunRecord): BatchStatus {
-  if (record.groups.some((group) => group.state === "running" || group.state === "queued")) return "interrupted";
+  if (
+    record.groups.some(
+      (group) => group.state === "running" || group.state === "queued",
+    )
+  )
+    return "interrupted";
   if (record.groups.some((group) => group.cleanupWarning)) return "interrupted";
-  if (record.groups.some((group) => group.state === "review-required")) return "interrupted";
-  if (record.groups.some((group) => group.state === "interrupted")) return "interrupted";
-  if (record.groups.some((group) => group.state === "failed")) return "completed-with-errors";
+  if (record.groups.some((group) => group.state === "review-required"))
+    return "interrupted";
+  if (record.groups.some((group) => group.state === "interrupted"))
+    return "interrupted";
+  if (record.groups.some((group) => group.state === "failed"))
+    return "completed-with-errors";
   return "completed";
 }
 
@@ -204,7 +242,9 @@ async function executeSelected(
   options: BatchRunOptions,
 ): Promise<BatchRunOutcome> {
   const now = options.now ?? (() => new Date().toISOString());
-  const cancellation = options.cancellation ?? { isCancellationRequested: false };
+  const cancellation = options.cancellation ?? {
+    isCancellationRequested: false,
+  };
   if (!(await validateAccess(options.accessValidator, request.accessGrants))) {
     for (const group of record.groups) {
       if (selected.has(group.groupName) && group.state !== "completed") {
@@ -220,7 +260,9 @@ async function executeSelected(
   const groups = new Map(request.groups.map((group) => [group.name, group]));
   for (const current of record.groups) {
     if (!selected.has(current.groupName)) continue;
-    if (!(await validateAccess(options.accessValidator, request.accessGrants))) {
+    if (
+      !(await validateAccess(options.accessValidator, request.accessGrants))
+    ) {
       current.state = "interrupted";
       current.interruptionReason = "access-required";
       markRemainingInterrupted(record, "access-required");
@@ -235,7 +277,11 @@ async function executeSelected(
       break;
     }
     const group = groups.get(current.groupName);
-    if (!group) throw new BatchStoppingError("missing-retry-group", `恢复时找不到素材组：${current.groupName}`);
+    if (!group)
+      throw new BatchStoppingError(
+        "missing-retry-group",
+        `恢复时找不到素材组：${current.groupName}`,
+      );
     current.attemptCount += 1;
     current.attemptId = fingerprintValue({
       runId: record.runId,
@@ -316,7 +362,10 @@ async function executeSelected(
   return { record, persistenceError };
 }
 
-function applyGroupResult(record: BatchGroupRecord, result: GroupRunResult): void {
+function applyGroupResult(
+  record: BatchGroupRecord,
+  result: GroupRunResult,
+): void {
   record.lastStage = result.lastStage;
   record.finishedAt = result.finishedAt;
   record.output = result.output;
@@ -334,7 +383,10 @@ function applyGroupResult(record: BatchGroupRecord, result: GroupRunResult): voi
   }
 }
 
-export async function runBatch(request: BatchRunRequest, options: BatchRunOptions): Promise<BatchRunOutcome> {
+export async function runBatch(
+  request: BatchRunRequest,
+  options: BatchRunOptions,
+): Promise<BatchRunOutcome> {
   const now = options.now ?? (() => new Date().toISOString());
   const record = createRecord(request, now);
   try {
@@ -345,32 +397,72 @@ export async function runBatch(request: BatchRunRequest, options: BatchRunOption
       error instanceof Error ? error.message : "无法创建批次运行记录",
     );
   }
-  return executeSelected(request, record, new Set(record.groups.map((group) => group.groupName)), options);
+  return executeSelected(
+    request,
+    record,
+    new Set(record.groups.map((group) => group.groupName)),
+    options,
+  );
 }
 
-export async function retryBatch(request: BatchRunRequest, options: BatchRunOptions): Promise<BatchRunOutcome> {
+export async function retryBatch(
+  request: BatchRunRequest,
+  options: BatchRunOptions,
+): Promise<BatchRunOutcome> {
   assertUniqueGroups(request.groups);
   const loaded = await options.store.load(request.runId);
-  if (!loaded) throw new BatchStoppingError("run-record-missing", `找不到运行记录：${request.runId}`);
-  if (loaded.schemaVersion !== 1) throw new BatchStoppingError("run-schema-unsupported", "运行记录结构版本不受支持");
+  if (!loaded)
+    throw new BatchStoppingError(
+      "run-record-missing",
+      `找不到运行记录：${request.runId}`,
+    );
+  if (loaded.schemaVersion !== 1)
+    throw new BatchStoppingError(
+      "run-schema-unsupported",
+      "运行记录结构版本不受支持",
+    );
   const groups = new Map(request.groups.map((group) => [group.name, group]));
   const selected = new Set<string>();
   for (const record of loaded.groups) {
     if (record.cleanupWarning || record.cleanupRequiresReview) {
-      throw new BatchStoppingError("recovery-required", `素材组 ${record.groupName} 必须先完成临时资源恢复`);
+      throw new BatchStoppingError(
+        "recovery-required",
+        `素材组 ${record.groupName} 必须先完成临时资源恢复`,
+      );
     }
-    if (record.state === "running" || record.state === "queued" || record.state === "review-required") {
-      throw new BatchStoppingError("recovery-required", `素材组 ${record.groupName} 必须先完成中断恢复`);
+    if (
+      record.state === "running" ||
+      record.state === "queued" ||
+      record.state === "review-required"
+    ) {
+      throw new BatchStoppingError(
+        "recovery-required",
+        `素材组 ${record.groupName} 必须先完成中断恢复`,
+      );
     }
     if (record.state !== "failed" && record.state !== "interrupted") continue;
     if (record.requiresReconciliation) {
-      throw new BatchStoppingError("recovery-required", `素材组 ${record.groupName} 必须先完成提交状态对账`);
+      throw new BatchStoppingError(
+        "recovery-required",
+        `素材组 ${record.groupName} 必须先完成提交状态对账`,
+      );
     }
     const group = groups.get(record.groupName);
-    if (!group) throw new BatchStoppingError("missing-retry-group", `重试缺少素材组：${record.groupName}`);
-    const currentFingerprint = createTaskFingerprint(request.template, group, request.pluginVersion);
+    if (!group)
+      throw new BatchStoppingError(
+        "missing-retry-group",
+        `重试缺少素材组：${record.groupName}`,
+      );
+    const currentFingerprint = createTaskFingerprint(
+      request.template,
+      group,
+      request.pluginVersion,
+    );
     if (currentFingerprint !== record.taskFingerprint) {
-      throw new BatchStoppingError("retry-fingerprint-changed", `素材组 ${record.groupName} 的模板、素材或配置已变化`);
+      throw new BatchStoppingError(
+        "retry-fingerprint-changed",
+        `素材组 ${record.groupName} 的模板、素材或配置已变化`,
+      );
     }
     record.state = "queued";
     selected.add(record.groupName);
@@ -380,17 +472,29 @@ export async function retryBatch(request: BatchRunRequest, options: BatchRunOpti
   return executeSelected(request, loaded, selected, options);
 }
 
-export async function recoverBatch(runId: string, options: BatchRecoveryOptions): Promise<BatchRunRecord> {
+export async function recoverBatch(
+  runId: string,
+  options: BatchRecoveryOptions,
+): Promise<BatchRunRecord> {
   const now = options.now ?? (() => new Date().toISOString());
   const record = await options.store.load(runId);
-  if (!record) throw new BatchStoppingError("run-record-missing", `找不到运行记录：${runId}`);
-  if (record.schemaVersion !== 1) throw new BatchStoppingError("run-schema-unsupported", "运行记录结构版本不受支持");
+  if (!record)
+    throw new BatchStoppingError(
+      "run-record-missing",
+      `找不到运行记录：${runId}`,
+    );
+  if (record.schemaVersion !== 1)
+    throw new BatchStoppingError(
+      "run-schema-unsupported",
+      "运行记录结构版本不受支持",
+    );
 
   const grants = options.accessGrants ?? record.accessGrants;
   if (!(await validateAccess(options.accessValidator, grants))) {
     for (const group of record.groups) {
       if (group.state !== "completed" && group.state !== "review-required") {
-        group.requiresReconciliation = group.requiresReconciliation || group.state === "running";
+        group.requiresReconciliation =
+          group.requiresReconciliation || group.state === "running";
         group.state = "interrupted";
         group.interruptionReason = "access-required";
       }
@@ -443,12 +547,15 @@ export async function recoverBatch(runId: string, options: BatchRecoveryOptions)
       if (cleanup === "preserved") {
         const cleanupWarning = "临时状态的归属无法证明，已保留并等待人工检查";
         group.state = "review-required";
-        group.error = group.error ? `${group.error}；${cleanupWarning}` : cleanupWarning;
+        group.error = group.error
+          ? `${group.error}；${cleanupWarning}`
+          : cleanupWarning;
         group.cleanupWarning = cleanupWarning;
         group.cleanupRequiresReview = false;
       } else if (group.cleanupRequiresReview) {
         group.state = "review-required";
-        group.error = group.cleanupWarning ?? "Photoshop 临时文档清理需要人工确认";
+        group.error =
+          group.cleanupWarning ?? "Photoshop 临时文档清理需要人工确认";
       } else {
         group.cleanupWarning = undefined;
         group.cleanupRequiresReview = undefined;
@@ -469,11 +576,24 @@ export async function confirmManualCleanupResolved(
 ): Promise<BatchRunRecord> {
   const now = options.now ?? (() => new Date().toISOString());
   const record = await options.store.load(runId);
-  if (!record) throw new BatchStoppingError("run-record-missing", `找不到运行记录：${runId}`);
-  const group = record.groups.find((candidate) => candidate.groupName === groupName);
-  if (!group) throw new BatchStoppingError("run-group-missing", `找不到素材组：${groupName}`);
+  if (!record)
+    throw new BatchStoppingError(
+      "run-record-missing",
+      `找不到运行记录：${runId}`,
+    );
+  const group = record.groups.find(
+    (candidate) => candidate.groupName === groupName,
+  );
+  if (!group)
+    throw new BatchStoppingError(
+      "run-group-missing",
+      `找不到素材组：${groupName}`,
+    );
   if (group.state !== "review-required" || !group.cleanupRequiresReview) {
-    throw new BatchStoppingError("manual-review-not-required", `素材组 ${groupName} 没有待确认的宿主清理问题`);
+    throw new BatchStoppingError(
+      "manual-review-not-required",
+      `素材组 ${groupName} 没有待确认的宿主清理问题`,
+    );
   }
   group.cleanupWarning = undefined;
   group.cleanupRequiresReview = undefined;
