@@ -209,6 +209,15 @@ describe("single-group workflow", () => {
     );
   });
 
+  it("ignores unsupported same-stem files exactly as preflight does", () => {
+    const group = structuredClone(samplePreflightPayload.groups[0]);
+    const original = createTaskFingerprint(samplePreflightPayload.template, group, "0.1.0");
+    const sameStem = group.files[0].name.replace(/\.[^.]+$/, ".psd");
+    group.files.push({ name: sameStem });
+
+    expect(createTaskFingerprint(samplePreflightPayload.template, group, "0.1.0")).toBe(original);
+  });
+
   it("uses standard SHA-256 and canonicalizes unordered configuration arrays", () => {
     expect(fingerprintBytes(Uint8Array.from([97, 98, 99]))).toBe(
       "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",

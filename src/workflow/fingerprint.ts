@@ -144,18 +144,36 @@ export function fingerprintValue(value: unknown): string {
   return fingerprintBytes(utf8Bytes(JSON.stringify(stableValue(value))));
 }
 
+function stableTemplateValue(template: TemplateConfig): Omit<TemplateConfig, "masterSourceRef"> {
+  const { masterSourceRef: _ephemeralMasterSourceRef, ...stableTemplate } = template;
+  return {
+    ...stableTemplate,
+    garmentPieces: [...template.garmentPieces].sort((left, right) => compareCodeUnits(left.id, right.id)),
+    artworkEntries: [...template.artworkEntries].sort((left, right) => compareCodeUnits(left.id, right.id)),
+    instances: [...template.instances].sort((left, right) => compareCodeUnits(left.id, right.id)),
+    output: {
+      ...template.output,
+      production: [...template.output.production].sort((left, right) => compareCodeUnits(left.id, right.id)),
+    },
+  };
+}
+
+export function createTemplateFingerprint(template: TemplateConfig, pluginVersion: string): string {
+  return fingerprintValue({ pluginVersion, template: stableTemplateValue(template) });
+}
+
 export function createTaskFingerprint(
   template: TemplateConfig,
   group: InputGroupSnapshot,
   pluginVersion: string,
 ): string {
-  const { masterSourceRef: _ephemeralMasterSourceRef, ...stableTemplate } = template;
   const expectedKeys = new Set(template.artworkEntries.map((entry) => entry.inputKey.toLowerCase()));
   const files = group.files.filter((file) => {
     const base = file.name.replace(/\\/g, "/").split("/").pop() ?? file.name;
     const separator = base.lastIndexOf(".");
+    const extension = separator > 0 ? base.slice(separator + 1).toLowerCase() : "";
     const stem = (separator > 0 ? base.slice(0, separator) : base).toLowerCase();
-    return expectedKeys.has(stem);
+    return ["png", "jpg", "jpeg"].includes(extension) && expectedKeys.has(stem);
   }).map((file) => {
     if (!file.sourceRef?.trim() || !file.fingerprint?.trim()) {
       throw new Error(`素材 ${file.name} 缺少来源引用或内容指纹`);
@@ -169,16 +187,7 @@ export function createTaskFingerprint(
   });
   return fingerprintValue({
     pluginVersion,
-    template: {
-      ...stableTemplate,
-      garmentPieces: [...template.garmentPieces].sort((left, right) => compareCodeUnits(left.id, right.id)),
-      artworkEntries: [...template.artworkEntries].sort((left, right) => compareCodeUnits(left.id, right.id)),
-      instances: [...template.instances].sort((left, right) => compareCodeUnits(left.id, right.id)),
-      output: {
-        ...template.output,
-        production: [...template.output.production].sort((left, right) => compareCodeUnits(left.id, right.id)),
-      },
-    },
+    template: stableTemplateValue(template),
     group: {
       name: group.name,
       files: files.sort((left, right) => {
