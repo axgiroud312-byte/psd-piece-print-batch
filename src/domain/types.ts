@@ -22,6 +22,7 @@ export interface ArtworkEntry {
   name: string;
   inputKey: string;
   contentSourceId: string;
+  replacementLayerName: string;
   required: boolean;
   optionalBehavior?: "keep-fixed";
   canvas: {
@@ -43,6 +44,7 @@ export interface TemplateConfig {
   templateId: string;
   version: string;
   masterFingerprint: string;
+  masterSourceRef: string;
   garmentPieces: GarmentPiece[];
   artworkEntries: ArtworkEntry[];
   instances: ArtworkInstance[];

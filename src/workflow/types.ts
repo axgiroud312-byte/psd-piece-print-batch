@@ -25,9 +25,9 @@ export interface StageEvent {
 }
 
 export interface OwnedDocuments {
-  masterDocumentId?: string;
-  workCopyDocumentId?: string;
-  contentDocumentIds: string[];
+  masterDocumentId?: string | number;
+  workCopyDocumentId?: string | number;
+  contentDocumentIds: Array<string | number>;
 }
 
 export interface ExecutionScope {

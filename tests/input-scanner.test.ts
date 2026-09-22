@@ -129,7 +129,7 @@ describe("UXP input scanner", () => {
         fingerprint: expect.any(String),
       }),
     );
-    expect(resolveScannedInputFile(scanned!.sourceRef!, scanned!.fingerprint!)).toBe(goodFile);
+    await expect(resolveScannedInputFile(scanned!.sourceRef!, scanned!.fingerprint!)).resolves.toBe(goodFile);
     expect(groups[0].files.find((file) => file.name === "损坏.jpg")?.metadataError).toBeTruthy();
     expect(groups[0].files).toContainEqual({ name: "说明.txt" });
   });
@@ -232,7 +232,35 @@ describe("UXP input scanner", () => {
     const first = (await scanInputFolder(makeRoot(firstFile) as never, "binary"))[0].files[0];
     const second = (await scanInputFolder(makeRoot(secondFile) as never, "binary"))[0].files[0];
 
-    expect(() => resolveScannedInputFile(first.sourceRef!, first.fingerprint!)).toThrow("来源引用已失效");
-    expect(resolveScannedInputFile(second.sourceRef!, second.fingerprint!)).toBe(secondFile);
+    await expect(resolveScannedInputFile(first.sourceRef!, first.fingerprint!)).rejects.toThrow("来源引用已失效");
+    await expect(resolveScannedInputFile(second.sourceRef!, second.fingerprint!)).resolves.toBe(secondFile);
+  });
+
+  it("rechecks file bytes when a scanned source is consumed", async () => {
+    const file = {
+      name: "front.png",
+      isFile: true,
+      isFolder: false,
+      read: async () => png(10, 10),
+    };
+    const root = {
+      name: "输入",
+      isFile: false,
+      isFolder: true,
+      getEntries: async () => [
+        {
+          name: "款式001",
+          isFile: false,
+          isFolder: true,
+          getEntries: async () => [file],
+        },
+      ],
+    };
+    const snapshot = (await scanInputFolder(root as never, "binary"))[0].files[0];
+    file.read = async () => png(11, 10);
+
+    await expect(resolveScannedInputFile(snapshot.sourceRef!, snapshot.fingerprint!)).rejects.toThrow(
+      "预检后发生变化",
+    );
   });
 });

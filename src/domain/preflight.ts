@@ -85,6 +85,7 @@ function validateEntry(entry: ArtworkEntry): PreflightIssue[] {
     [entry.name, "素材入口名称"],
     [entry.inputKey, "输入名称"],
     [entry.contentSourceId, "内容源 ID"],
+    [entry.replacementLayerName, "智能对象内部替换层名称"],
   ];
   for (const [value, label] of requiredStrings) {
     if (typeof value !== "string" || value.trim() === "") {
@@ -131,11 +132,16 @@ export function validateTemplate(template: TemplateConfig): PreflightIssue[] {
   if (template.schemaVersion !== 1) {
     issues.push({ severity: "error", code: "schema-version", message: "只支持模板结构版本 1" });
   }
-  if (!template.templateId?.trim() || !template.version?.trim() || !template.masterFingerprint?.trim()) {
+  if (
+    !template.templateId?.trim() ||
+    !template.version?.trim() ||
+    !template.masterFingerprint?.trim() ||
+    !template.masterSourceRef?.trim()
+  ) {
     issues.push({
       severity: "error",
       code: "template-identity",
-      message: "模板编号、版本和母版指纹都必须有明确值",
+      message: "模板编号、版本、母版指纹和母版来源引用都必须有明确值",
     });
   }
   if (template.garmentPieces.length === 0 || template.artworkEntries.length === 0 || template.instances.length === 0) {
@@ -227,6 +233,7 @@ export function validateTemplate(template: TemplateConfig): PreflightIssue[] {
     if (
       existing.required !== entry.required ||
       existing.optionalBehavior !== entry.optionalBehavior ||
+      existing.replacementLayerName !== entry.replacementLayerName ||
       JSON.stringify(existing.fit) !== JSON.stringify(entry.fit)
     ) {
       issues.push({
@@ -462,6 +469,7 @@ function parseArtworkEntry(value: unknown): ArtworkEntry {
     name: requireString(value, "name"),
     inputKey: requireString(value, "inputKey"),
     contentSourceId: requireString(value, "contentSourceId"),
+    replacementLayerName: requireString(value, "replacementLayerName"),
     required,
     optionalBehavior,
     canvas: {
@@ -514,6 +522,7 @@ function parseTemplateRecord(template: Record<string, unknown>): TemplateConfig 
     templateId: requireString(template, "templateId"),
     version: requireString(template, "version"),
     masterFingerprint: requireString(template, "masterFingerprint"),
+    masterSourceRef: requireString(template, "masterSourceRef"),
     garmentPieces: requireArray(template, "garmentPieces").map(parseGarmentPiece),
     artworkEntries: requireArray(template, "artworkEntries").map(parseArtworkEntry),
     instances: requireArray(template, "instances").map(parseArtworkInstance),

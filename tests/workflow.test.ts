@@ -212,7 +212,7 @@ describe("single-group workflow", () => {
     group.name = "蓝花-样组";
 
     expect(createTaskFingerprint(template, group, "0.1.0")).toBe(
-      "b125606e6a31ead6e4889ea0f5a8ed8c25d76db218b9200caeb472d972bd4d1a",
+      "85e1cb227357518fe5d1064fdf1edcf65e2d98e4e005eda58839f4b3c1bcbc1a",
     );
   });
 

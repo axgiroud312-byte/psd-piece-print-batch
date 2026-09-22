@@ -25,7 +25,7 @@ interface UxpStorage {
   formats: { binary: string; utf8: string };
 }
 
-const scannedSources = new Map<string, { file: UxpFile; fingerprint: string }>();
+const scannedSources = new Map<string, { file: UxpFile; fingerprint: string; binaryFormat: string }>();
 let scanSequence = 0;
 
 function extensionOf(name: string): string {
@@ -158,7 +158,7 @@ async function scanFile(
     const data = await file.read({ format: binaryFormat });
     if (!(data instanceof ArrayBuffer)) throw new Error("二进制素材读取结果无效");
     const fingerprint = fingerprintBytes(new Uint8Array(data));
-    scannedSources.set(sourceRef, { file, fingerprint });
+    scannedSources.set(sourceRef, { file, fingerprint, binaryFormat });
     return {
       name: file.name,
       ...readImageDimensions(data, extension),
@@ -207,10 +207,15 @@ export async function scanInputFolder(
   return groups;
 }
 
-export function resolveScannedInputFile(sourceRef: string, expectedFingerprint: string): unknown {
+export async function resolveScannedInputFile(sourceRef: string, expectedFingerprint: string): Promise<unknown> {
   const source = scannedSources.get(sourceRef);
   if (!source) throw new Error("素材来源引用已失效，请重新扫描素材目录");
   if (source.fingerprint !== expectedFingerprint) throw new Error("素材内容指纹与扫描记录不一致");
+  const data = await source.file.read({ format: source.binaryFormat });
+  if (!(data instanceof ArrayBuffer)) throw new Error("重新读取素材时未获得二进制内容");
+  if (fingerprintBytes(new Uint8Array(data)) !== expectedFingerprint) {
+    throw new Error("素材在预检后发生变化，请重新扫描素材目录");
+  }
   return source.file;
 }
 

@@ -41,6 +41,25 @@ describe("template validation", () => {
     );
   });
 
+  it("requires one replacement layer contract per shared content source", () => {
+    const payload = cloneSample();
+    payload.template.artworkEntries.push({
+      ...payload.template.artworkEntries[0],
+      id: "entry-shared-layer-conflict",
+      replacementLayerName: "OTHER_ART",
+    });
+    payload.template.instances.push({
+      id: "instance-shared-layer-conflict",
+      garmentPieceId: "piece-front",
+      artworkEntryId: "entry-shared-layer-conflict",
+      layerPath: ["PRINT｜生产内容", "前片", "另一智能对象实例"],
+    });
+
+    expect(validateTemplate(payload.template)).toContainEqual(
+      expect.objectContaining({ code: "shared-rule-conflict", severity: "error" }),
+    );
+  });
+
   it("requires optional and contain behavior to be explicit", () => {
     const payload = cloneSample();
     const entry = payload.template.artworkEntries[0];
