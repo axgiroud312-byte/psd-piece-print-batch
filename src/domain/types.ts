@@ -17,6 +17,15 @@ export interface GarmentPiece {
   name: string;
 }
 
+export interface TemplateDocumentSpec {
+  width: number;
+  height: number;
+  ppi: number;
+  colorMode: "rgb" | "cmyk";
+  bitDepth: 8 | 16;
+  iccProfile: string | null;
+}
+
 export interface ArtworkEntry {
   id: string;
   name: string;
@@ -39,15 +48,71 @@ export interface ArtworkInstance {
   layerPath: string[];
 }
 
+export type OutputFormat = "png" | "jpeg" | "psd" | "psb";
+export type OutputCompression = "lossless" | "jpeg-high" | "photoshop";
+export type OutputColorMode = "rgb" | "cmyk";
+export type OutputBitDepth = 8 | 16;
+
+export interface OutputRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export type OutputIccPolicy =
+  | { mode: "none" }
+  | { mode: "embed"; profile: string };
+
+export type OutputBackground =
+  | { kind: "transparent" }
+  | { kind: "solid"; color: string };
+
+export interface OutputRenderProfile {
+  format: OutputFormat;
+  compression: OutputCompression;
+  ppi: number;
+  colorMode: OutputColorMode;
+  bitDepth: OutputBitDepth;
+  icc: OutputIccPolicy;
+  background: OutputBackground;
+  includeGuides: boolean;
+  includeMarks: boolean;
+}
+
+export interface OutputTarget {
+  id: string;
+  fileName: string;
+  region: OutputRegion;
+  visibleLayerPaths: string[][];
+  markLayerPaths: string[][];
+  maximumFileBytes: number;
+  profile: OutputRenderProfile;
+}
+
+export type ProductionOutputTarget =
+  | (OutputTarget & { productionKind: "piece"; garmentPieceId: string })
+  | (OutputTarget & { productionKind: "combined" })
+  | (OutputTarget & { productionKind: "editable-work-copy"; preserveAllLayers: true });
+
+export interface TemplateOutputConfig {
+  capabilityProfileId: string;
+  productionMode: "pieces" | "combined" | "pieces-and-combined";
+  preview: OutputTarget;
+  production: ProductionOutputTarget[];
+}
+
 export interface TemplateConfig {
-  schemaVersion: 1;
+  schemaVersion: 2;
   templateId: string;
   version: string;
   masterFingerprint: string;
   masterSourceRef: string;
+  document: TemplateDocumentSpec;
   garmentPieces: GarmentPiece[];
   artworkEntries: ArtworkEntry[];
   instances: ArtworkInstance[];
+  output: TemplateOutputConfig;
 }
 
 export interface InputFileSnapshot {

@@ -1,4 +1,4 @@
-import type { ArtworkAssignment, InputGroupSnapshot, TemplateConfig } from "../domain/types";
+import type { ArtworkAssignment, InputGroupSnapshot, OutputTarget, TemplateConfig } from "../domain/types";
 import { OperationCancelledError } from "../workflow/cancellation";
 import { fingerprintValue } from "../workflow/fingerprint";
 import type {
@@ -7,12 +7,30 @@ import type {
   DraftOutput,
   ExecutionScope,
   GroupExecutionAdapter,
+  OutputArtifact,
+  OutputArtifactExpectation,
+  OutputArtifactMetadata,
   RunStage,
+  VerifiedOutput,
 } from "../workflow/types";
 
 interface MemoryScope extends ExecutionScope {
   resolved: boolean;
   artwork: Map<string, { sourceRef: string; fingerprint: string; fileName: string }>;
+}
+
+function expectedMetadata(target: OutputTarget): OutputArtifactMetadata {
+  return {
+    format: target.profile.format,
+    width: target.region.width,
+    height: target.region.height,
+    ppi: target.profile.ppi,
+    colorMode: target.profile.colorMode,
+    bitDepth: target.profile.bitDepth,
+    iccProfile: target.profile.icc.mode === "embed" ? target.profile.icc.profile : null,
+    background: target.profile.background.kind === "solid" ? "opaque" : "transparent",
+    includesGuides: target.profile.includeGuides,
+  };
 }
 
 export interface MemoryAdapterOptions {
@@ -69,6 +87,16 @@ export class MemoryBatchAdapter implements GroupExecutionAdapter {
     const current = this.scopes.get(scope.scopeId);
     if (!current) throw new Error("执行作用域不存在或已经清理");
     return current;
+  }
+
+  async preflightOutput(
+    _runId: string,
+    _template: TemplateConfig,
+    _group: InputGroupSnapshot,
+    _pluginVersion: string,
+    cancellation: CancellationToken,
+  ): Promise<void> {
+    this.ensureNotCancelled(cancellation);
   }
 
   createScope(runId: string): ExecutionScope {
@@ -150,44 +178,96 @@ export class MemoryBatchAdapter implements GroupExecutionAdapter {
     this.interrupt("validate-structure");
   }
 
-  async exportPreview(
+  async exportOutputs(
     scope: ExecutionScope,
+    template: TemplateConfig,
     group: InputGroupSnapshot,
+    pluginVersion: string,
     cancellation: CancellationToken,
   ): Promise<DraftOutput> {
-    this.record("export-preview");
+    this.record("export-output");
     this.ensureNotCancelled(cancellation);
     const current = this.memoryScope(scope);
     const temporaryLocation = `temp/${scope.scopeId}`;
     current.temporaryLocations.push(temporaryLocation);
-    const artwork = [...current.artwork.entries()].sort(([left], [right]) => left.localeCompare(right));
-    const fingerprint = fingerprintValue({ group: group.name, artwork });
+    const expectedArtifacts: OutputArtifactExpectation[] = [
+      {
+        targetId: template.output.preview.id,
+        name: template.output.preview.fileName,
+        kind: "preview",
+        region: { ...template.output.preview.region },
+        visibleLayerPaths: structuredClone(template.output.preview.visibleLayerPaths),
+        markLayerPaths: structuredClone(template.output.preview.markLayerPaths),
+        maximumFileBytes: template.output.preview.maximumFileBytes,
+        renderProfile: structuredClone(template.output.preview.profile),
+        metadata: expectedMetadata(template.output.preview),
+      },
+      ...template.output.production.map((target) => ({
+        targetId: target.id,
+        name: target.fileName,
+        kind: "production" as const,
+        region: { ...target.region },
+        visibleLayerPaths: structuredClone(target.visibleLayerPaths),
+        markLayerPaths: structuredClone(target.markLayerPaths),
+        maximumFileBytes: target.maximumFileBytes,
+        renderProfile: structuredClone(target.profile),
+        metadata: expectedMetadata(target),
+      })),
+    ];
     const output = {
       temporaryLocation,
-      artifacts: [{ name: "预览.json", kind: "preview" as const, fingerprint }],
+      finalLocation: `runs/${scope.runId}/${group.name}`,
+      groupName: group.name,
+      capabilityProfileId: template.output.capabilityProfileId,
+      expectedArtifacts,
+      audit: {
+        pluginVersion,
+        outputImplementationVersion: "memory-adapter-v1",
+        photoshopVersion: "memory-adapter",
+        templateId: template.templateId,
+        templateVersion: template.version,
+        masterFingerprint: template.masterFingerprint,
+        outputConfigFingerprint: fingerprintValue(template.output),
+        sourceFingerprints: group.files
+          .filter((file): file is typeof file & { fingerprint: string } => Boolean(file.fingerprint))
+          .map((file) => ({ name: file.name, fingerprint: file.fingerprint })),
+      },
     };
-    this.interrupt("export-preview");
+    this.interrupt("export-output");
     return output;
   }
 
   async verifyOutput(
     scope: ExecutionScope,
     output: DraftOutput,
+    taskFingerprint: string,
     cancellation: CancellationToken,
-  ): Promise<void> {
+  ): Promise<VerifiedOutput> {
     this.record("verify-output");
     this.ensureNotCancelled(cancellation);
-    this.memoryScope(scope);
-    if (output.artifacts.length !== 1 || output.artifacts[0].kind !== "preview") {
-      throw new Error("预览输出不完整");
-    }
+    const current = this.memoryScope(scope);
+    const artwork = [...current.artwork.entries()].sort(([left], [right]) => left.localeCompare(right));
+    const artifacts: OutputArtifact[] = output.expectedArtifacts.map((expected) => ({
+      name: expected.name,
+      kind: expected.kind,
+      fingerprint: fingerprintValue({ expected, artwork }),
+      byteLength: 1,
+      metadata: { ...expected.metadata },
+    }));
+    const reportText = JSON.stringify({ taskFingerprint, artifacts });
+    artifacts.push({
+      name: "result.json",
+      kind: "report",
+      fingerprint: fingerprintValue(reportText),
+      byteLength: reportText.length,
+    });
     this.interrupt("verify-output");
+    return { ...output, taskFingerprint, artifacts };
   }
 
   async commitResult(
     scope: ExecutionScope,
-    output: DraftOutput,
-    taskFingerprint: string,
+    output: VerifiedOutput,
     cancellation: CancellationToken,
   ): Promise<CommittedOutput> {
     this.record("commit-result");
@@ -195,7 +275,7 @@ export class MemoryBatchAdapter implements GroupExecutionAdapter {
     this.memoryScope(scope);
     this.interrupt("commit-result");
     const committed = {
-      location: `runs/${scope.scopeId}/${taskFingerprint.slice(0, 12)}`,
+      location: output.finalLocation,
       artifacts: [...output.artifacts],
     };
     this.committed.push(committed);

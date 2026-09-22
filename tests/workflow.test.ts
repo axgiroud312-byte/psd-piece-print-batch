@@ -24,13 +24,13 @@ describe("single-group workflow", () => {
     const result = await runSingleGroup(request(), adapter);
 
     expect(result.status).toBe("completed");
-    expect(result.output?.artifacts).toHaveLength(1);
+    expect(result.output?.artifacts).toHaveLength(6);
     expect(adapter.calls).toEqual([
       "copy-master",
       "resolve-template",
       "replace-artwork",
       "validate-structure",
-      "export-preview",
+      "export-output",
       "verify-output",
       "commit-result",
       "cleanup",
@@ -46,7 +46,7 @@ describe("single-group workflow", () => {
     "resolve-template",
     "replace-artwork",
     "validate-structure",
-    "export-preview",
+    "export-output",
     "verify-output",
     "commit-result",
   ] satisfies Array<Exclude<RunStage, "preflight" | "cleanup">>)(
@@ -161,6 +161,21 @@ describe("single-group workflow", () => {
     expect(adapter.calls).toHaveLength(0);
   });
 
+  it("blocks output capability and destination failures before creating or modifying documents", async () => {
+    const adapter = new MemoryBatchAdapter(samplePreflightPayload.template.masterFingerprint);
+    adapter.preflightOutput = async () => {
+      throw new Error("输出目录已存在，禁止覆盖");
+    };
+
+    const result = await runSingleGroup(request(), adapter);
+
+    expect(result.status).toBe("failed");
+    expect(result.lastStage).toBe("preflight");
+    expect(result.error).toContain("禁止覆盖");
+    expect(adapter.calls).toHaveLength(0);
+    expect(adapter.openSessionCount).toBe(0);
+  });
+
   it("uses template, source, configuration, and plugin data in task identity", () => {
     const original = structuredClone(samplePreflightPayload.groups[0]);
     const changed = structuredClone(original);
@@ -169,10 +184,13 @@ describe("single-group workflow", () => {
     const first = createTaskFingerprint(samplePreflightPayload.template, original, "0.1.0");
     const second = createTaskFingerprint(samplePreflightPayload.template, changed, "0.1.0");
     const third = createTaskFingerprint(samplePreflightPayload.template, original, "0.2.0");
+    const changedOutput = structuredClone(samplePreflightPayload.template);
+    changedOutput.output.production[0].profile.ppi = 300;
 
     expect(first).toMatch(/^[0-9a-f]{64}$/);
     expect(second).not.toBe(first);
     expect(third).not.toBe(first);
+    expect(createTaskFingerprint(changedOutput, original, "0.1.0")).not.toBe(first);
   });
 
   it("keeps task identity stable when unchanged files receive new scan-scoped references", () => {
@@ -198,6 +216,7 @@ describe("single-group workflow", () => {
     template.garmentPieces.reverse();
     template.artworkEntries.reverse();
     template.instances.reverse();
+    template.output.production.reverse();
     group.files.reverse();
     expect(createTaskFingerprint(template, group, "0.1.0")).toBe(original);
 
@@ -212,7 +231,7 @@ describe("single-group workflow", () => {
     group.name = "蓝花-样组";
 
     expect(createTaskFingerprint(template, group, "0.1.0")).toBe(
-      "85e1cb227357518fe5d1064fdf1edcf65e2d98e4e005eda58839f4b3c1bcbc1a",
+      "afc9076fec4e50ac5704df2bbfdc98516c93c12e8b60786575d9df977be298c4",
     );
   });
 

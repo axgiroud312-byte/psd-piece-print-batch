@@ -7,6 +7,8 @@ import type {
   DraftOutput,
   ExecutionScope,
   GroupExecutionAdapter,
+  ModalDocumentControl,
+  VerifiedOutput,
 } from "../workflow/types";
 
 interface PhotoshopLayer {
@@ -26,6 +28,10 @@ interface PhotoshopDocument {
   name: string;
   width?: NumberLike;
   height?: NumberLike;
+  resolution?: number;
+  mode?: unknown;
+  bitsPerChannel?: unknown;
+  colorProfileName?: string;
   layers: PhotoshopLayer[];
   duplicate?(name: string, mergeLayersOnly?: boolean): Promise<PhotoshopDocument>;
   save?(): Promise<void>;
@@ -40,10 +46,7 @@ interface PhotoshopApplication {
 
 interface ModalExecutionContext {
   isCancelled?: boolean;
-  hostControl: {
-    registerAutoCloseDocument(documentId: number): Promise<void>;
-    unregisterAutoCloseDocument(documentId: number): Promise<void>;
-  };
+  hostControl: ModalDocumentControl;
 }
 
 interface PhotoshopRuntime {
@@ -99,9 +102,23 @@ export interface SourceResolver {
 }
 
 export interface PhotoshopOutputPort {
-  exportPreview(scope: ExecutionScope, group: InputGroupSnapshot, documentId: number): Promise<DraftOutput>;
-  verifyOutput(scope: ExecutionScope, output: DraftOutput): Promise<void>;
-  commitResult(scope: ExecutionScope, output: DraftOutput, taskFingerprint: string): Promise<CommittedOutput>;
+  preflight(runId: string, template: TemplateConfig, group: InputGroupSnapshot, pluginVersion: string): Promise<void>;
+  exportOutputs(
+    scope: ExecutionScope,
+    template: TemplateConfig,
+    group: InputGroupSnapshot,
+    documentId: number,
+    pluginVersion: string,
+    photoshopVersion: string,
+    documentControl: ModalDocumentControl,
+  ): Promise<DraftOutput>;
+  verifyOutput(
+    scope: ExecutionScope,
+    output: DraftOutput,
+    taskFingerprint: string,
+    documentControl: ModalDocumentControl,
+  ): Promise<VerifiedOutput>;
+  commitResult(scope: ExecutionScope, output: VerifiedOutput): Promise<CommittedOutput>;
   cleanup(scope: ExecutionScope): Promise<void>;
 }
 
@@ -143,6 +160,45 @@ function numberValue(value: NumberLike | undefined, label: string): number {
           : Number.NaN;
   if (!Number.isFinite(resolved)) throw new Error(`${label} 不是有效像素值`);
   return resolved;
+}
+
+function documentColorMode(value: unknown): "rgb" | "cmyk" | undefined {
+  const normalized = String(value).toLowerCase();
+  if (normalized.includes("cmyk")) return "cmyk";
+  if (normalized.includes("rgb")) return "rgb";
+  return undefined;
+}
+
+function documentBitDepth(value: unknown): 8 | 16 | undefined {
+  if (value === 8 || String(value).toLowerCase().includes("eight")) return 8;
+  if (value === 16 || String(value).toLowerCase().includes("sixteen")) return 16;
+  return undefined;
+}
+
+function assertDocumentSpec(document: PhotoshopDocument, template: TemplateConfig): void {
+  const expected = template.document;
+  const actual = {
+    width: numberValue(document.width, "母版宽度"),
+    height: numberValue(document.height, "母版高度"),
+    ppi: document.resolution,
+    colorMode: documentColorMode(document.mode),
+    bitDepth: documentBitDepth(document.bitsPerChannel),
+    iccProfile:
+      document.colorProfileName && document.colorProfileName !== "None" ? document.colorProfileName : null,
+  };
+  if (
+    actual.width !== expected.width ||
+    actual.height !== expected.height ||
+    !Number.isFinite(actual.ppi) ||
+    Math.abs((actual.ppi as number) - expected.ppi) > 0.01 ||
+    actual.colorMode !== expected.colorMode ||
+    actual.bitDepth !== expected.bitDepth ||
+    actual.iccProfile !== expected.iccProfile
+  ) {
+    throw new Error(
+      `实际母版规格与登记不一致：登记 ${expected.width}×${expected.height}/${expected.ppi} PPI/${expected.colorMode}/${expected.bitDepth} 位/${expected.iccProfile ?? "无 ICC"}，实际 ${actual.width}×${actual.height}/${actual.ppi ?? "未知"} PPI/${actual.colorMode ?? "未知"}/${actual.bitDepth ?? "未知"} 位/${actual.iccProfile ?? "无 ICC"}`,
+    );
+  }
 }
 
 function anchorOffset(fit: FitRule): { x: number; y: number } {
@@ -344,6 +400,18 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
     }
   }
 
+  async preflightOutput(
+    runId: string,
+    template: TemplateConfig,
+    group: InputGroupSnapshot,
+    pluginVersion: string,
+    cancellation: CancellationToken,
+  ): Promise<void> {
+    this.assertCapability();
+    ensureNotCancelled(cancellation);
+    await this.outputPort.preflight(runId, template, group, pluginVersion);
+  }
+
   private async selectLayer(documentId: number, layerId: number): Promise<void> {
     const results = await this.runtime.action.batchPlay(
       [
@@ -445,6 +513,7 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
       const workCopy = await master.duplicate(`${template.templateId}-${scope.runId}`, false);
       scope.documents.workCopyDocumentId = workCopy.id;
       await context.hostControl.registerAutoCloseDocument(workCopy.id);
+      assertDocumentSpec(workCopy, template);
       await closeDocument(master);
       await context.hostControl.unregisterAutoCloseDocument(workCopy.id);
     });
@@ -613,40 +682,53 @@ export class PhotoshopBatchAdapter implements GroupExecutionAdapter {
     });
   }
 
-  async exportPreview(
+  async exportOutputs(
     scope: ExecutionScope,
+    template: TemplateConfig,
     group: InputGroupSnapshot,
+    pluginVersion: string,
     cancellation: CancellationToken,
   ): Promise<DraftOutput> {
     this.assertCapability();
     ensureNotCancelled(cancellation);
     const documentId = Number(scope.documents.workCopyDocumentId);
     if (!Number.isFinite(documentId)) throw new Error("缺少工作副本文档");
-    return this.modal("导出本组预览", async (context) => {
+    return this.modal("导出本组预览与生产文件", async (context) => {
       ensureModalNotCancelled(context, cancellation);
-      return this.outputPort.exportPreview(scope, group, documentId);
+      return this.outputPort.exportOutputs(
+        scope,
+        template,
+        group,
+        documentId,
+        pluginVersion,
+        this.runtime.hostVersion,
+        context.hostControl,
+      );
     });
   }
 
   async verifyOutput(
     scope: ExecutionScope,
     output: DraftOutput,
+    taskFingerprint: string,
     cancellation: CancellationToken,
-  ): Promise<void> {
+  ): Promise<VerifiedOutput> {
     this.assertCapability();
     ensureNotCancelled(cancellation);
-    await this.outputPort.verifyOutput(scope, output);
+    return this.modal("重读并验证全部输出", async (context) => {
+      ensureModalNotCancelled(context, cancellation);
+      return this.outputPort.verifyOutput(scope, output, taskFingerprint, context.hostControl);
+    });
   }
 
   async commitResult(
     scope: ExecutionScope,
-    output: DraftOutput,
-    taskFingerprint: string,
+    output: VerifiedOutput,
     cancellation: CancellationToken,
   ): Promise<CommittedOutput> {
     this.assertCapability();
     ensureNotCancelled(cancellation);
-    return this.outputPort.commitResult(scope, output, taskFingerprint);
+    return this.outputPort.commitResult(scope, output);
   }
 
   async cleanup(scope: ExecutionScope): Promise<void> {

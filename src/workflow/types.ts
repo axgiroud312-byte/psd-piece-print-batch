@@ -1,6 +1,10 @@
 import type {
   ArtworkAssignment,
   InputGroupSnapshot,
+  OutputColorMode,
+  OutputFormat,
+  OutputRegion,
+  OutputRenderProfile,
   TemplateConfig,
 } from "../domain/types";
 
@@ -10,7 +14,7 @@ export type RunStage =
   | "resolve-template"
   | "replace-artwork"
   | "validate-structure"
-  | "export-preview"
+  | "export-output"
   | "verify-output"
   | "commit-result"
   | "cleanup";
@@ -30,6 +34,11 @@ export interface OwnedDocuments {
   contentDocumentIds: Array<string | number>;
 }
 
+export interface ModalDocumentControl {
+  registerAutoCloseDocument(documentId: number): Promise<void>;
+  unregisterAutoCloseDocument(documentId: number): Promise<void>;
+}
+
 export interface ExecutionScope {
   scopeId: string;
   runId: string;
@@ -41,12 +50,60 @@ export interface OutputArtifact {
   name: string;
   kind: "preview" | "production" | "report";
   fingerprint: string;
-  width?: number;
-  height?: number;
+  byteLength: number;
+  metadata?: OutputArtifactMetadata;
+}
+
+export interface OutputArtifactMetadata {
+  format: OutputFormat;
+  width: number;
+  height: number;
+  ppi: number;
+  colorMode: OutputColorMode;
+  bitDepth: 8 | 16;
+  iccProfile: string | null;
+  background: "transparent" | "opaque";
+  includesGuides: boolean;
+}
+
+export interface OutputArtifactExpectation {
+  targetId: string;
+  name: string;
+  kind: "preview" | "production";
+  region: OutputRegion;
+  visibleLayerPaths: string[][];
+  markLayerPaths: string[][];
+  maximumFileBytes: number;
+  renderProfile: OutputRenderProfile;
+  metadata: OutputArtifactMetadata;
 }
 
 export interface DraftOutput {
   temporaryLocation: string;
+  finalLocation: string;
+  groupName: string;
+  capabilityProfileId: string;
+  expectedArtifacts: OutputArtifactExpectation[];
+  audit: OutputAuditContext;
+}
+
+export interface OutputAuditContext {
+  pluginVersion: string;
+  outputImplementationVersion: string;
+  photoshopVersion: string;
+  templateId: string;
+  templateVersion: string;
+  masterFingerprint: string;
+  outputConfigFingerprint: string;
+  sourceFingerprints: Array<{ name: string; fingerprint: string }>;
+}
+
+export interface VerifiedOutput {
+  temporaryLocation: string;
+  finalLocation: string;
+  groupName: string;
+  capabilityProfileId: string;
+  taskFingerprint: string;
   artifacts: OutputArtifact[];
 }
 
@@ -56,21 +113,34 @@ export interface CommittedOutput {
 }
 
 export interface GroupExecutionAdapter {
+  preflightOutput(
+    runId: string,
+    template: TemplateConfig,
+    group: InputGroupSnapshot,
+    pluginVersion: string,
+    cancellation: CancellationToken,
+  ): Promise<void>;
   createScope(runId: string): ExecutionScope;
   createWorkCopy(scope: ExecutionScope, template: TemplateConfig, cancellation: CancellationToken): Promise<void>;
   resolveTemplate(scope: ExecutionScope, template: TemplateConfig, cancellation: CancellationToken): Promise<void>;
   replaceArtwork(scope: ExecutionScope, assignments: ArtworkAssignment[], cancellation: CancellationToken): Promise<void>;
   validateStructure(scope: ExecutionScope, template: TemplateConfig, cancellation: CancellationToken): Promise<void>;
-  exportPreview(
+  exportOutputs(
     scope: ExecutionScope,
+    template: TemplateConfig,
     group: InputGroupSnapshot,
+    pluginVersion: string,
     cancellation: CancellationToken,
   ): Promise<DraftOutput>;
-  verifyOutput(scope: ExecutionScope, output: DraftOutput, cancellation: CancellationToken): Promise<void>;
-  commitResult(
+  verifyOutput(
     scope: ExecutionScope,
     output: DraftOutput,
     taskFingerprint: string,
+    cancellation: CancellationToken,
+  ): Promise<VerifiedOutput>;
+  commitResult(
+    scope: ExecutionScope,
+    output: VerifiedOutput,
     cancellation: CancellationToken,
   ): Promise<CommittedOutput>;
   cleanup(scope: ExecutionScope): Promise<void>;

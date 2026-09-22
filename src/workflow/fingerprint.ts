@@ -173,6 +173,10 @@ export function createTaskFingerprint(
       garmentPieces: [...template.garmentPieces].sort((left, right) => compareCodeUnits(left.id, right.id)),
       artworkEntries: [...template.artworkEntries].sort((left, right) => compareCodeUnits(left.id, right.id)),
       instances: [...template.instances].sort((left, right) => compareCodeUnits(left.id, right.id)),
+      output: {
+        ...template.output,
+        production: [...template.output.production].sort((left, right) => compareCodeUnits(left.id, right.id)),
+      },
     },
     group: {
       name: group.name,

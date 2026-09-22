@@ -2,11 +2,12 @@ import type { PreflightPayload } from "./types";
 
 export const samplePreflightPayload: PreflightPayload = {
   template: {
-    schemaVersion: 1,
+    schemaVersion: 2,
     templateId: "shirt-demo-one-size",
     version: "0.1.0-draft",
     masterFingerprint: "UNVERIFIED-DEMO-FINGERPRINT",
     masterSourceRef: "demo-master/成品母版.psd",
+    document: { width: 6000, height: 6000, ppi: 150, colorMode: "rgb", bitDepth: 8, iccProfile: null },
     garmentPieces: [
       { id: "piece-front", name: "前片" },
       { id: "piece-back", name: "后片" },
@@ -71,6 +72,55 @@ export const samplePreflightPayload: PreflightPayload = {
         layerPath: ["PRINT｜生产内容", "右袖", "ART｜印花智能对象实例"],
       },
     ],
+    output: {
+      capabilityProfileId: "UNVERIFIED-DEMO-OUTPUT",
+      productionMode: "pieces",
+      preview: {
+        id: "preview-composite",
+        fileName: "预览.jpg",
+        region: { x: 0, y: 0, width: 4800, height: 3600 },
+        visibleLayerPaths: [["PREVIEW｜预览内容"]],
+        markLayerPaths: [],
+        maximumFileBytes: 80_000_000,
+        profile: {
+          format: "jpeg",
+          compression: "jpeg-high",
+          ppi: 72,
+          colorMode: "rgb",
+          bitDepth: 8,
+          icc: { mode: "none" },
+          background: { kind: "solid", color: "#ffffff" },
+          includeGuides: false,
+          includeMarks: false,
+        },
+      },
+      production: ([
+        ["front", "piece-front", "前片", 0, 0, 2400, 3200],
+        ["back", "piece-back", "后片", 2400, 0, 2400, 3200],
+        ["left-sleeve", "piece-left-sleeve", "左袖", 0, 3200, 1800, 2400],
+        ["right-sleeve", "piece-right-sleeve", "右袖", 1800, 3200, 1800, 2400],
+      ] as const).map(([id, garmentPieceId, name, x, y, width, height]) => ({
+        id: `production-${id}`,
+        productionKind: "piece" as const,
+        garmentPieceId,
+        fileName: `${name}.png`,
+        region: { x, y, width, height },
+        visibleLayerPaths: [["PRINT｜生产内容", name]],
+        markLayerPaths: [["MARKS｜工艺标记", name]],
+        maximumFileBytes: 80_000_000,
+        profile: {
+          format: "png" as const,
+          compression: "lossless" as const,
+          ppi: 150,
+          colorMode: "rgb" as const,
+          bitDepth: 8 as const,
+          icc: { mode: "none" as const },
+          background: { kind: "transparent" as const },
+          includeGuides: false,
+          includeMarks: false,
+        },
+      })),
+    },
   },
   groups: [
     {

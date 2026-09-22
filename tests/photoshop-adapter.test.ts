@@ -15,6 +15,7 @@ function singleEntryFixture() {
   template.garmentPieces = [template.garmentPieces[0]];
   template.artworkEntries = [template.artworkEntries[0]];
   template.instances = [template.instances[0]];
+  template.output.production = [template.output.production[0]];
   const group = structuredClone(samplePreflightPayload.groups[0]);
   group.files = [group.files[0]];
   return { template, group };
@@ -23,15 +24,62 @@ function singleEntryFixture() {
 function outputPort(): PhotoshopOutputPort & { committed: number } {
   return {
     committed: 0,
-    async exportPreview(scope) {
+    async preflight() {},
+    async exportOutputs(scope, template, group, _documentId, pluginVersion, photoshopVersion) {
       const temporaryLocation = `temp/${scope.scopeId}`;
       scope.temporaryLocations.push(temporaryLocation);
+      const preview = template.output.preview;
       return {
         temporaryLocation,
-        artifacts: [{ name: "预览.png", kind: "preview", fingerprint: "preview-fingerprint" }],
+        finalLocation: `runs/${scope.runId}/${group.name}`,
+        groupName: group.name,
+        capabilityProfileId: template.output.capabilityProfileId,
+        expectedArtifacts: [{
+          targetId: preview.id,
+          name: preview.fileName,
+          kind: "preview",
+          region: preview.region,
+          visibleLayerPaths: preview.visibleLayerPaths,
+          markLayerPaths: preview.markLayerPaths,
+          maximumFileBytes: preview.maximumFileBytes,
+          renderProfile: preview.profile,
+          metadata: {
+            format: preview.profile.format,
+            width: preview.region.width,
+            height: preview.region.height,
+            ppi: preview.profile.ppi,
+            colorMode: preview.profile.colorMode,
+            bitDepth: preview.profile.bitDepth,
+            iccProfile: null,
+            background: "opaque",
+            includesGuides: false,
+          },
+        }],
+        audit: {
+          pluginVersion,
+          outputImplementationVersion: "test-output-v1",
+          photoshopVersion,
+          templateId: template.templateId,
+          templateVersion: template.version,
+          masterFingerprint: template.masterFingerprint,
+          outputConfigFingerprint: "output-config",
+          sourceFingerprints: [],
+        },
       };
     },
-    async verifyOutput() {},
+    async verifyOutput(_scope, output, taskFingerprint) {
+      return {
+        ...output,
+        taskFingerprint,
+        artifacts: [{
+          name: output.expectedArtifacts[0].name,
+          kind: "preview",
+          fingerprint: "preview-fingerprint",
+          byteLength: 1,
+          metadata: output.expectedArtifacts[0].metadata,
+        }],
+      };
+    },
     async commitResult(_scope, output) {
       this.committed += 1;
       return { location: "runs/result", artifacts: output.artifacts };
@@ -104,6 +152,12 @@ function createFakeRuntime(linked = false, contentExtras: Array<Record<string, a
   const workDocument = {
     id: 2,
     name: "工作副本.psd",
+    width: 6000,
+    height: 6000,
+    resolution: 150,
+    mode: "RGBColorMode",
+    bitsPerChannel: "EIGHT",
+    colorProfileName: "None",
     layers: workLayers,
     closeWithoutSaving: vi.fn(async () => removeDocument(workDocument)),
   };
@@ -358,6 +412,34 @@ describe("Photoshop adapter", () => {
     await expect(
       adapter.createWorkCopy(adapter.createScope("version"), template, { isCancellationRequested: false }),
     ).rejects.toThrow("当前 Photoshop 25.1.0 不在已验证版本 25.0.0 内");
+  });
+
+  it("blocks a stale registered document specification before replacing artwork", async () => {
+    const { template, group } = singleEntryFixture();
+    const fake = createFakeRuntime();
+    fake.workDocument.width = 5999;
+    const adapter = new PhotoshopBatchAdapter({
+      capability: {
+        m0Validated: true,
+        smartObjectEditingValidated: true,
+        validatedPhotoshopVersion: "25.0.0",
+      },
+      masterResolver: { resolve: async () => ({}) },
+      artworkResolver: { resolve: async () => ({}) },
+      outputPort: outputPort(),
+      runtime: fake.runtime as never,
+    });
+
+    const result = await runSingleGroup(
+      { runId: "stale-document", pluginVersion: "0.1.0", template, group },
+      adapter,
+    );
+
+    expect(result.status).toBe("failed");
+    expect(result.lastStage).toBe("copy-master");
+    expect(result.error).toContain("实际母版规格与登记不一致");
+    expect(fake.oldReplacement.delete).not.toHaveBeenCalled();
+    expect(fake.documents).toEqual([fake.userDocument]);
   });
 
   it("continues closing owned documents after one close fails", async () => {

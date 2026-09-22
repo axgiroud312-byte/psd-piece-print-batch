@@ -71,6 +71,7 @@ export async function runSingleGroup(
   };
 
   try {
+    emit("preflight", "started", "校验素材、模板和输出目标");
     const preflight = preflightGroups({ template: request.template, groups: [request.group] });
     const group = preflight.groups[0];
     if (!group || group.status !== "valid") {
@@ -80,7 +81,8 @@ export async function runSingleGroup(
         .join("；");
       throw new Error(messages || "素材组预检未通过");
     }
-    emit("preflight", "completed", "素材组预检通过");
+    await adapter.preflightOutput(request.runId, request.template, request.group, request.pluginVersion, cancellation);
+    emit("preflight", "completed", "素材组和输出目标预检通过");
     taskFingerprint = createTaskFingerprint(request.template, request.group, request.pluginVersion);
     scope = adapter.createScope(request.runId);
 
@@ -96,14 +98,14 @@ export async function runSingleGroup(
     await execute("validate-structure", "校验工作副本结构", () =>
       adapter.validateStructure(scope!, request.template, cancellation),
     );
-    const draft = await execute("export-preview", "导出本组预览", () =>
-      adapter.exportPreview(scope!, request.group, cancellation),
+    const draft = await execute("export-output", "导出本组预览与生产文件", () =>
+      adapter.exportOutputs(scope!, request.template, request.group, request.pluginVersion, cancellation),
     );
-    await execute("verify-output", "重读并验证预览输出", () =>
-      adapter.verifyOutput(scope!, draft, cancellation),
+    const verified = await execute("verify-output", "重读并验证全部输出", () =>
+      adapter.verifyOutput(scope!, draft, taskFingerprint, cancellation),
     );
     output = await execute("commit-result", "原子提交本组结果", () =>
-      adapter.commitResult(scope!, draft, taskFingerprint, cancellation),
+      adapter.commitResult(scope!, verified, cancellation),
       false,
     );
     status = "completed";

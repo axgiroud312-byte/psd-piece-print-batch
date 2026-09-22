@@ -6,10 +6,16 @@ import type {
   GarmentPiece,
   GroupPreflight,
   InputFileSnapshot,
+  OutputBackground,
+  OutputIccPolicy,
+  OutputRenderProfile,
+  OutputTarget,
   PreflightIssue,
   PreflightPayload,
   PreflightReport,
+  ProductionOutputTarget,
   TemplateConfig,
+  TemplateOutputConfig,
 } from "./types";
 
 const supportedExtensions = new Set(["png", "jpg", "jpeg"]);
@@ -127,10 +133,207 @@ function validateEntry(entry: ArtworkEntry): PreflightIssue[] {
   return issues;
 }
 
+const outputExtensions = {
+  png: "png",
+  jpeg: "jpg",
+  psd: "psd",
+  psb: "psb",
+} as const;
+
+function invalidOutputFileName(fileName: string): boolean {
+  const normalized = fileName.toLowerCase();
+  return (
+    fileName.trim() !== fileName ||
+    fileName === "." ||
+    fileName === ".." ||
+    /[<>:"/\\|?*\u0000-\u001f]/.test(fileName) ||
+    /[. ]$/.test(fileName) ||
+    normalized === "result.json"
+  );
+}
+
+function validateOutputTarget(
+  target: OutputTarget,
+  label: string,
+  document: TemplateConfig["document"],
+): PreflightIssue[] {
+  const issues: PreflightIssue[] = [];
+  const editable = "productionKind" in target && target.productionKind === "editable-work-copy";
+  if (!target?.id?.trim() || !target.fileName?.trim() || invalidOutputFileName(target.fileName)) {
+    issues.push({ severity: "error", code: "invalid-output-name", message: `${label} 的 ID 或文件名无效` });
+  }
+  const region = target?.region;
+  if (
+    !region ||
+    !Number.isSafeInteger(region.x) ||
+    !Number.isSafeInteger(region.y) ||
+    region.x < 0 ||
+    region.y < 0 ||
+    !Number.isSafeInteger(region.width) ||
+    !Number.isSafeInteger(region.height) ||
+    region.width <= 0 ||
+    region.height <= 0
+  ) {
+    issues.push({ severity: "error", code: "invalid-output-region", message: `${label} 的固定导出区域无效` });
+  } else if (document && (region.x + region.width > document.width || region.y + region.height > document.height)) {
+    issues.push({ severity: "error", code: "output-region-outside-document", message: `${label} 的固定区域超出母版画布` });
+  }
+  const invalidVisiblePaths =
+    !Array.isArray(target?.visibleLayerPaths) ||
+    (!editable && target.visibleLayerPaths.length === 0) ||
+    target.visibleLayerPaths.some(
+      (path) => !Array.isArray(path) || path.length === 0 || path.some((part) => !part?.trim()),
+    );
+  if (invalidVisiblePaths) {
+    issues.push({ severity: "error", code: "invalid-output-visibility", message: `${label} 必须声明非空可见图层路径` });
+  }
+  if (
+    !Array.isArray(target?.markLayerPaths) ||
+    target.markLayerPaths.some(
+      (path) => !Array.isArray(path) || path.length === 0 || path.some((part) => !part?.trim()),
+    )
+  ) {
+    issues.push({ severity: "error", code: "invalid-output-marks", message: `${label} 的工艺标记图层路径无效` });
+  }
+  if (!Number.isSafeInteger(target?.maximumFileBytes) || target.maximumFileBytes <= 0) {
+    issues.push({ severity: "error", code: "output-file-limit", message: `${label} 必须声明正整数文件大小上限` });
+  }
+
+  const profile = target?.profile;
+  const format = profile?.format;
+  const expectedExtension = format ? outputExtensions[format] : undefined;
+  const actualExtension = target?.fileName?.split(".").pop()?.toLowerCase();
+  if (!expectedExtension || (actualExtension !== expectedExtension && !(format === "jpeg" && actualExtension === "jpeg"))) {
+    issues.push({ severity: "error", code: "output-extension", message: `${label} 的扩展名与格式不一致` });
+  }
+  const validCompression =
+    (format === "png" && profile?.compression === "lossless") ||
+    (format === "jpeg" && profile?.compression === "jpeg-high") ||
+    ((format === "psd" || format === "psb") && profile?.compression === "photoshop");
+  if (!validCompression) {
+    issues.push({ severity: "error", code: "output-compression", message: `${label} 的格式与压缩组合无效` });
+  }
+  if (
+    !profile ||
+    !Number.isFinite(profile.ppi) ||
+    profile.ppi <= 0 ||
+    !["rgb", "cmyk"].includes(profile.colorMode) ||
+    ![8, 16].includes(profile.bitDepth)
+  ) {
+    issues.push({ severity: "error", code: "output-metadata", message: `${label} 的 PPI、色彩模式或位深无效` });
+  }
+  if (
+    !profile?.icc ||
+    !["none", "embed"].includes(profile.icc.mode) ||
+    (profile.icc.mode === "embed" && !profile.icc.profile?.trim())
+  ) {
+    issues.push({ severity: "error", code: "output-icc", message: `${label} 的 ICC 规则无效` });
+  }
+  if (
+    !profile?.background ||
+    !["transparent", "solid"].includes(profile.background.kind) ||
+    (profile.background.kind === "solid" && !profile.background.color?.trim()) ||
+    (format === "jpeg" && profile.background.kind !== "solid")
+  ) {
+    issues.push({ severity: "error", code: "output-background", message: `${label} 的透明或底色规则无效` });
+  }
+  if (typeof profile?.includeGuides !== "boolean" || typeof profile.includeMarks !== "boolean") {
+    issues.push({ severity: "error", code: "output-marks", message: `${label} 必须明确辅助线和工艺标记规则` });
+  }
+  return issues;
+}
+
+function validateOutputConfig(template: TemplateConfig): PreflightIssue[] {
+  const output = template.output;
+  if (
+    !output?.capabilityProfileId?.trim() ||
+    !["pieces", "combined", "pieces-and-combined"].includes(output.productionMode) ||
+    !output.preview ||
+    !Array.isArray(output.production)
+  ) {
+    return [{ severity: "error", code: "output-config", message: "模板必须声明输出能力、预览和生产配置" }];
+  }
+  const issues = [
+    ...validateOutputTarget(output.preview, "预览输出", template.document),
+    ...output.production.flatMap((target) =>
+      validateOutputTarget(target, `生产输出 ${target?.id ?? "未知"}`, template.document),
+    ),
+  ];
+  const allTargets = [output.preview, ...output.production];
+  issues.push(
+    ...uniqueIssues(allTargets.map((target) => ({ id: target.id, label: "输出目标" }))),
+    ...uniqueIssues(allTargets.map((target) => ({ id: target.fileName, label: "输出文件名" }))),
+  );
+  const pieceIds = new Set(template.garmentPieces.map((piece) => piece.id));
+  const outputPieces = new Set<string>();
+  let combinedCount = 0;
+  for (const target of output.production) {
+    if (target.productionKind === "piece") {
+      if (!pieceIds.has(target.garmentPieceId)) {
+        issues.push({
+          severity: "error",
+          code: "unknown-output-piece",
+          message: `生产输出 ${target.id} 引用了不存在的裁片 ${target.garmentPieceId}`,
+        });
+      }
+      if (outputPieces.has(target.garmentPieceId)) {
+        issues.push({ severity: "error", code: "duplicate-output-piece", message: `裁片 ${target.garmentPieceId} 有重复生产输出` });
+      }
+      outputPieces.add(target.garmentPieceId);
+    } else if (target.productionKind === "combined") {
+      combinedCount += 1;
+    } else if (target.productionKind === "editable-work-copy") {
+      if (target.profile.format !== "psd" && target.profile.format !== "psb") {
+        issues.push({ severity: "error", code: "editable-output-format", message: `可编辑工作副本 ${target.id} 必须使用 PSD 或 PSB` });
+      }
+      if (
+        target.preserveAllLayers !== true ||
+        target.region.x !== 0 ||
+        target.region.y !== 0 ||
+        target.region.width !== template.document.width ||
+        target.region.height !== template.document.height ||
+        target.profile.ppi !== template.document.ppi ||
+        target.profile.colorMode !== template.document.colorMode ||
+        target.profile.bitDepth !== template.document.bitDepth ||
+        (template.document.iccProfile === null
+          ? target.profile.icc.mode !== "none"
+          : target.profile.icc.mode !== "embed" || target.profile.icc.profile !== template.document.iccProfile) ||
+        target.profile.includeGuides !== true ||
+        target.profile.includeMarks !== true ||
+        target.visibleLayerPaths.length !== 0 ||
+        target.markLayerPaths.length !== 0
+      ) {
+        issues.push({
+          severity: "error",
+          code: "editable-output-contract",
+          message: `可编辑工作副本 ${target.id} 必须保留完整画布、分辨率、图层、辅助线和标记`,
+        });
+      }
+    }
+  }
+  if (output.productionMode === "pieces" || output.productionMode === "pieces-and-combined") {
+    for (const piece of template.garmentPieces) {
+      if (!outputPieces.has(piece.id)) {
+        issues.push({ severity: "error", code: "missing-output-piece", message: `裁片 ${piece.name} 缺少生产输出` });
+      }
+    }
+  }
+  if ((output.productionMode === "combined" || output.productionMode === "pieces-and-combined") && combinedCount === 0) {
+    issues.push({ severity: "error", code: "missing-combined-output", message: "当前生产模式必须声明合版输出" });
+  }
+  if (output.productionMode === "combined" && outputPieces.size > 0) {
+    issues.push({ severity: "error", code: "unexpected-piece-output", message: "仅合版模式不能同时声明分片输出" });
+  }
+  if (output.productionMode === "pieces" && combinedCount > 0) {
+    issues.push({ severity: "error", code: "unexpected-combined-output", message: "仅分片模式不能同时声明合版输出" });
+  }
+  return issues;
+}
+
 export function validateTemplate(template: TemplateConfig): PreflightIssue[] {
   const issues: PreflightIssue[] = [];
-  if (template.schemaVersion !== 1) {
-    issues.push({ severity: "error", code: "schema-version", message: "只支持模板结构版本 1" });
+  if (template.schemaVersion !== 2) {
+    issues.push({ severity: "error", code: "schema-version", message: "只支持模板结构版本 2" });
   }
   if (
     !template.templateId?.trim() ||
@@ -143,6 +346,21 @@ export function validateTemplate(template: TemplateConfig): PreflightIssue[] {
       code: "template-identity",
       message: "模板编号、版本、母版指纹和母版来源引用都必须有明确值",
     });
+  }
+  if (
+    !template.document ||
+    !Number.isSafeInteger(template.document.width) ||
+    !Number.isSafeInteger(template.document.height) ||
+    template.document.width <= 0 ||
+    template.document.height <= 0 ||
+    !Number.isFinite(template.document.ppi) ||
+    template.document.ppi <= 0 ||
+    !["rgb", "cmyk"].includes(template.document.colorMode) ||
+    ![8, 16].includes(template.document.bitDepth) ||
+    (template.document.iccProfile !== null &&
+      (typeof template.document.iccProfile !== "string" || template.document.iccProfile.trim() === ""))
+  ) {
+    issues.push({ severity: "error", code: "document-spec", message: "母版像素尺寸、PPI、色彩模式和位深必须明确有效" });
   }
   if (template.garmentPieces.length === 0 || template.artworkEntries.length === 0 || template.instances.length === 0) {
     issues.push({
@@ -158,6 +376,7 @@ export function validateTemplate(template: TemplateConfig): PreflightIssue[] {
     ...uniqueIssues(template.instances.map((instance) => ({ id: instance.id, label: "实例" }))),
   );
   for (const entry of template.artworkEntries) issues.push(...validateEntry(entry));
+  issues.push(...validateOutputConfig(template));
 
   const pieceIds = new Set(template.garmentPieces.map((piece) => piece.id));
   const entryIds = new Set(template.artworkEntries.map((entry) => entry.id));
@@ -494,6 +713,115 @@ function parseArtworkInstance(value: unknown): ArtworkInstance {
   };
 }
 
+function requireOneOf<T extends string>(record: Record<string, unknown>, key: string, allowed: readonly T[]): T {
+  const value = requireString(record, key);
+  if (!allowed.includes(value as T)) throw new Error(`字段 ${key} 的值不受支持：${value}`);
+  return value as T;
+}
+
+function parseOutputIcc(value: unknown): OutputIccPolicy {
+  if (!isRecord(value)) throw new Error("ICC 规则必须是对象");
+  const mode = requireOneOf(value, "mode", ["none", "embed"] as const);
+  return mode === "embed" ? { mode, profile: requireString(value, "profile") } : { mode };
+}
+
+function parseOutputBackground(value: unknown): OutputBackground {
+  if (!isRecord(value)) throw new Error("输出背景规则必须是对象");
+  const kind = requireOneOf(value, "kind", ["transparent", "solid"] as const);
+  return kind === "solid" ? { kind, color: requireString(value, "color") } : { kind };
+}
+
+function parseOutputProfile(value: unknown): OutputRenderProfile {
+  if (!isRecord(value)) throw new Error("输出配置必须是对象");
+  const bitDepth = requireNumber(value, "bitDepth");
+  if (bitDepth !== 8 && bitDepth !== 16) throw new Error("输出位深只支持 8 或 16");
+  return {
+    format: requireOneOf(value, "format", ["png", "jpeg", "psd", "psb"] as const),
+    compression: requireOneOf(value, "compression", ["lossless", "jpeg-high", "photoshop"] as const),
+    ppi: requireNumber(value, "ppi"),
+    colorMode: requireOneOf(value, "colorMode", ["rgb", "cmyk"] as const),
+    bitDepth,
+    icc: parseOutputIcc(value.icc),
+    background: parseOutputBackground(value.background),
+    includeGuides: requireBoolean(value, "includeGuides"),
+    includeMarks: requireBoolean(value, "includeMarks"),
+  };
+}
+
+function parseOutputTarget(value: unknown): OutputTarget {
+  if (!isRecord(value)) throw new Error("输出目标必须是对象");
+  const region = requireRecord(value, "region");
+  const visibleLayerPaths = requireArray(value, "visibleLayerPaths").map((path) => {
+    if (!Array.isArray(path) || path.length === 0) throw new Error("可见图层路径必须是非空数组");
+    return path.map((part) => {
+      if (typeof part !== "string" || part.trim() === "") throw new Error("可见图层路径必须由非空字符串组成");
+      return part;
+    });
+  });
+  const markLayerPaths = requireArray(value, "markLayerPaths").map((path) => {
+    if (!Array.isArray(path) || path.length === 0) throw new Error("工艺标记图层路径必须是非空数组");
+    return path.map((part) => {
+      if (typeof part !== "string" || part.trim() === "") throw new Error("工艺标记图层路径必须由非空字符串组成");
+      return part;
+    });
+  });
+  return {
+    id: requireString(value, "id"),
+    fileName: requireString(value, "fileName"),
+    region: {
+      x: requireNumber(region, "x"),
+      y: requireNumber(region, "y"),
+      width: requireNumber(region, "width"),
+      height: requireNumber(region, "height"),
+    },
+    visibleLayerPaths,
+    markLayerPaths,
+    maximumFileBytes: requireNumber(value, "maximumFileBytes"),
+    profile: parseOutputProfile(value.profile),
+  };
+}
+
+function parseProductionOutputTarget(value: unknown): ProductionOutputTarget {
+  if (!isRecord(value)) throw new Error("生产输出目标必须是对象");
+  const productionKind = requireOneOf(value, "productionKind", ["piece", "combined", "editable-work-copy"] as const);
+  if (productionKind === "piece") {
+    return { ...parseOutputTarget(value), productionKind, garmentPieceId: requireString(value, "garmentPieceId") };
+  }
+  if (productionKind === "editable-work-copy") {
+    if (requireBoolean(value, "preserveAllLayers") !== true) throw new Error("可编辑工作副本必须保留全部图层");
+    return { ...parseOutputTarget(value), productionKind, preserveAllLayers: true };
+  }
+  return { ...parseOutputTarget(value), productionKind };
+}
+
+function parseTemplateOutput(value: unknown): TemplateOutputConfig {
+  if (!isRecord(value)) throw new Error("模板输出配置必须是对象");
+  return {
+    capabilityProfileId: requireString(value, "capabilityProfileId"),
+    productionMode: requireOneOf(value, "productionMode", ["pieces", "combined", "pieces-and-combined"] as const),
+    preview: parseOutputTarget(value.preview),
+    production: requireArray(value, "production").map(parseProductionOutputTarget),
+  };
+}
+
+function parseTemplateDocument(value: unknown): TemplateConfig["document"] {
+  if (!isRecord(value)) throw new Error("母版文档规格必须是对象");
+  const bitDepth = requireNumber(value, "bitDepth");
+  if (bitDepth !== 8 && bitDepth !== 16) throw new Error("母版位深只支持 8 或 16");
+  const iccProfile = value.iccProfile;
+  if (iccProfile !== null && (typeof iccProfile !== "string" || iccProfile.trim() === "")) {
+    throw new Error("母版 ICC 必须是非空字符串或 null");
+  }
+  return {
+    width: requireNumber(value, "width"),
+    height: requireNumber(value, "height"),
+    ppi: requireNumber(value, "ppi"),
+    colorMode: requireOneOf(value, "colorMode", ["rgb", "cmyk"] as const),
+    bitDepth,
+    iccProfile,
+  };
+}
+
 function parseInputFile(value: unknown): InputFileSnapshot {
   if (!isRecord(value)) throw new Error("素材文件必须是对象");
   const width = optionalNumber(value, "width");
@@ -516,16 +844,18 @@ function parseInputFile(value: unknown): InputFileSnapshot {
 
 function parseTemplateRecord(template: Record<string, unknown>): TemplateConfig {
   const schemaVersion = requireNumber(template, "schemaVersion");
-  if (schemaVersion !== 1) throw new Error("只支持模板结构版本 1");
+  if (schemaVersion !== 2) throw new Error("只支持模板结构版本 2");
   return {
     schemaVersion,
     templateId: requireString(template, "templateId"),
     version: requireString(template, "version"),
     masterFingerprint: requireString(template, "masterFingerprint"),
     masterSourceRef: requireString(template, "masterSourceRef"),
+    document: parseTemplateDocument(template.document),
     garmentPieces: requireArray(template, "garmentPieces").map(parseGarmentPiece),
     artworkEntries: requireArray(template, "artworkEntries").map(parseArtworkEntry),
     instances: requireArray(template, "instances").map(parseArtworkInstance),
+    output: parseTemplateOutput(template.output),
   };
 }
 

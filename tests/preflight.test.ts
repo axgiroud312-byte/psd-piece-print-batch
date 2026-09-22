@@ -106,6 +106,69 @@ describe("template validation", () => {
       expect.objectContaining({ code: "empty-template", severity: "error" }),
     );
   });
+
+  it("requires explicit fixed output regions, metadata, and one production target per piece", () => {
+    const payload = cloneSample();
+    payload.template.output.preview.region.width = 0;
+    payload.template.output.preview.profile.background = { kind: "transparent" };
+    payload.template.output.production = [];
+
+    const codes = validateTemplate(payload.template).map((issue) => issue.code);
+    expect(codes).toEqual(
+      expect.arrayContaining(["invalid-output-region", "output-background", "missing-output-piece"]),
+    );
+  });
+
+  it("rejects output filename collisions and mismatched format settings", () => {
+    const payload = cloneSample();
+    payload.template.output.production[0].fileName = payload.template.output.preview.fileName;
+    payload.template.output.production[1].profile.compression = "jpeg-high";
+
+    const codes = validateTemplate(payload.template).map((issue) => issue.code);
+    expect(codes).toEqual(expect.arrayContaining(["duplicate-id", "output-compression"]));
+  });
+
+  it("supports combined production output and optional editable work copies", () => {
+    const payload = cloneSample();
+    const combined = {
+      ...payload.template.output.production[0],
+      id: "production-combined",
+      productionKind: "combined" as const,
+      fileName: "合版.png",
+    };
+    const editable = {
+      ...payload.template.output.production[0],
+      id: "editable-work-copy",
+      productionKind: "editable-work-copy" as const,
+      preserveAllLayers: true as const,
+      fileName: "工作副本.psb",
+      region: { x: 0, y: 0, width: payload.template.document.width, height: payload.template.document.height },
+      visibleLayerPaths: [],
+      markLayerPaths: [],
+      maximumFileBytes: 200_000_000,
+      profile: {
+        ...payload.template.output.production[0].profile,
+        format: "psb" as const,
+        compression: "photoshop" as const,
+        ppi: payload.template.document.ppi,
+        includeGuides: true,
+        includeMarks: true,
+      },
+    };
+    payload.template.output.productionMode = "combined";
+    payload.template.output.production = [combined, editable];
+
+    expect(validateTemplate(payload.template)).toHaveLength(0);
+  });
+
+  it("rejects fixed regions outside the registered document canvas", () => {
+    const payload = cloneSample();
+    payload.template.output.preview.region.x = payload.template.document.width - 1;
+
+    expect(validateTemplate(payload.template)).toContainEqual(
+      expect.objectContaining({ code: "output-region-outside-document" }),
+    );
+  });
 });
 
 describe("group preflight", () => {
@@ -201,9 +264,11 @@ describe("group preflight", () => {
 
 describe("manifest parsing", () => {
   it("parses a structurally valid payload", () => {
-    expect(parsePreflightPayload(JSON.stringify(samplePreflightPayload)).template.templateId).toBe(
-      "shirt-demo-one-size",
-    );
+    const template = parsePreflightPayload(JSON.stringify(samplePreflightPayload)).template;
+    expect(template.templateId).toBe("shirt-demo-one-size");
+    expect(template.schemaVersion).toBe(2);
+    expect(template.output.preview.region).toEqual({ x: 0, y: 0, width: 4800, height: 3600 });
+    expect(template.output.production).toHaveLength(4);
   });
 
   it("rejects malformed JSON and missing arrays", () => {
