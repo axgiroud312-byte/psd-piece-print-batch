@@ -377,6 +377,55 @@ button {
   color: #9ebbd4;
 }
 
+.demo-runner {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.demo-runner__body,
+.demo-runner__fingerprint,
+.demo-runner__event,
+.demo-runner__integrity {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.demo-runner__result {
+  margin-top: 12px;
+}
+
+.demo-runner__status {
+  margin: 0 0 8px;
+  padding: 9px 10px;
+  color: var(--paper);
+  border-left: 3px solid var(--signal);
+  background: var(--surface-high);
+  font-size: 11px;
+}
+
+.demo-runner__status--completed {
+  border-left-color: #68b184;
+}
+
+.demo-runner__event {
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(53, 66, 80, 0.55);
+  font-family: Consolas, monospace;
+}
+
+.demo-runner__fingerprint {
+  margin-bottom: 6px;
+  color: var(--signal);
+  font-family: Consolas, monospace;
+}
+
+.demo-runner__integrity {
+  margin-top: 8px;
+}
+
 @media (max-width: 350px) {
   .app-shell {
     padding-right: 12px;

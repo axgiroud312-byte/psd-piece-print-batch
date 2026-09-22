@@ -1,4 +1,5 @@
 import type { InputFileSnapshot, InputGroupSnapshot } from "../domain/types";
+import { fingerprintBytes } from "../workflow/fingerprint";
 
 interface UxpEntry {
   name: string;
@@ -23,6 +24,9 @@ interface UxpStorage {
   localFileSystem: UxpFileSystem;
   formats: { binary: string; utf8: string };
 }
+
+const scannedSources = new Map<string, { file: UxpFile; fingerprint: string }>();
+let scanSequence = 0;
 
 function extensionOf(name: string): string {
   const separator = name.lastIndexOf(".");
@@ -143,13 +147,24 @@ export function readImageDimensions(
   throw new Error(`不支持的素材格式：${extension || "无扩展名"}`);
 }
 
-async function scanFile(file: UxpFile, binaryFormat: string): Promise<InputFileSnapshot> {
+async function scanFile(
+  file: UxpFile,
+  binaryFormat: string,
+  sourceRef: string,
+): Promise<InputFileSnapshot> {
   const extension = extensionOf(file.name);
   if (!["png", "jpg", "jpeg"].includes(extension)) return { name: file.name };
   try {
     const data = await file.read({ format: binaryFormat });
     if (!(data instanceof ArrayBuffer)) throw new Error("二进制素材读取结果无效");
-    return { name: file.name, ...readImageDimensions(data, extension) };
+    const fingerprint = fingerprintBytes(new Uint8Array(data));
+    scannedSources.set(sourceRef, { file, fingerprint });
+    return {
+      name: file.name,
+      ...readImageDimensions(data, extension),
+      sourceRef,
+      fingerprint,
+    };
   } catch (error) {
     return {
       name: file.name,
@@ -162,6 +177,9 @@ export async function scanInputFolder(
   root: UxpFolder,
   binaryFormat: string,
 ): Promise<InputGroupSnapshot[]> {
+  scannedSources.clear();
+  scanSequence += 1;
+  const scanId = `scan-${scanSequence}`;
   const rootEntries = await root.getEntries();
   const looseFiles = rootEntries.filter((entry) => entry.isFile);
   if (looseFiles.length > 0) {
@@ -177,13 +195,23 @@ export async function scanInputFolder(
     const files = entries.filter((entry) => entry.isFile) as UxpFile[];
     files.sort((left, right) => left.name.localeCompare(right.name, "zh-CN"));
     const snapshots: InputFileSnapshot[] = [];
-    for (const file of files) snapshots.push(await scanFile(file, binaryFormat));
+    for (const file of files) {
+      const sourceRef = `${scanId}:${encodeURIComponent(folder.name)}/${encodeURIComponent(file.name)}`;
+      snapshots.push(await scanFile(file, binaryFormat, sourceRef));
+    }
     groups.push({
       name: folder.name,
       files: snapshots,
     });
   }
   return groups;
+}
+
+export function resolveScannedInputFile(sourceRef: string, expectedFingerprint: string): unknown {
+  const source = scannedSources.get(sourceRef);
+  if (!source) throw new Error("素材来源引用已失效，请重新扫描素材目录");
+  if (source.fingerprint !== expectedFingerprint) throw new Error("素材内容指纹与扫描记录不一致");
+  return source.file;
 }
 
 export async function selectAndScanInputRoot(storageOverride?: UxpStorage): Promise<InputGroupSnapshot[] | null> {

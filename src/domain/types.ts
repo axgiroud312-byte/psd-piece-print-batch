@@ -53,6 +53,8 @@ export interface InputFileSnapshot {
   width?: number;
   height?: number;
   ppi?: number;
+  sourceRef?: string;
+  fingerprint?: string;
   metadataError?: string;
 }
 
@@ -80,6 +82,8 @@ export interface ArtworkAssignment {
   entryId: string;
   contentSourceId: string;
   fileName: string;
+  sourceRef: string;
+  sourceFingerprint: string;
 }
 
 export interface GroupPreflight {

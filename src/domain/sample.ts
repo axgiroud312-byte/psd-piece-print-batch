@@ -72,16 +72,16 @@ export const samplePreflightPayload: PreflightPayload = {
     {
       name: "款式001-蓝花",
       files: [
-        { name: "front.png", width: 2400, height: 3200, ppi: 72 },
-        { name: "back.jpg", width: 3000, height: 3000, ppi: 300 },
-        { name: "sleeves.png", width: 1800, height: 2600, ppi: 150 },
+        { name: "front.png", width: 2400, height: 3200, ppi: 72, sourceRef: "款式001-蓝花/front.png", fingerprint: "demo-front-blue" },
+        { name: "back.jpg", width: 3000, height: 3000, ppi: 300, sourceRef: "款式001-蓝花/back.jpg", fingerprint: "demo-back-blue" },
+        { name: "sleeves.png", width: 1800, height: 2600, ppi: 150, sourceRef: "款式001-蓝花/sleeves.png", fingerprint: "demo-sleeves-blue" },
       ],
     },
     {
       name: "款式 002（待补图）",
       files: [
-        { name: "front.png", width: 2400, height: 3200, ppi: 300 },
-        { name: "sleeves.jpg", width: 1800, height: 2400, ppi: 72 },
+        { name: "front.png", width: 2400, height: 3200, ppi: 300, sourceRef: "款式002/front.png", fingerprint: "demo-front-pending" },
+        { name: "sleeves.jpg", width: 1800, height: 2400, ppi: 72, sourceRef: "款式002/sleeves.jpg", fingerprint: "demo-sleeves-pending" },
         { name: "说明.txt" },
       ],
     },

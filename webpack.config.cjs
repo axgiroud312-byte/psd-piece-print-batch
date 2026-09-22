@@ -2,6 +2,7 @@ const path = require("node:path");
 const CopyPlugin = require("copy-webpack-plugin");
 
 module.exports = {
+  target: ["web", "es2018"],
   entry: "./src/index.ts",
   output: {
     filename: "index.js",

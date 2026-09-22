@@ -124,7 +124,11 @@ describe("group preflight", () => {
 
   it("checks strict-size mismatch separately from duplicate matching", () => {
     const payload = cloneSample();
-    payload.groups[0].files[0] = { name: "front.png", width: 1200, height: 1600 };
+    payload.groups[0].files[0] = {
+      ...payload.groups[0].files[0],
+      width: 1200,
+      height: 1600,
+    };
 
     expect(preflightGroups(payload).groups[0].issues).toContainEqual(
       expect.objectContaining({ code: "strict-size-mismatch", fileName: "front.png" }),
@@ -133,10 +137,24 @@ describe("group preflight", () => {
 
   it("requires real dimensions for proportional fitting", () => {
     const payload = cloneSample();
-    payload.groups[0].files[1] = { name: "back.jpg" };
+    payload.groups[0].files[1] = {
+      ...payload.groups[0].files[1],
+      width: undefined,
+      height: undefined,
+    };
 
     expect(preflightGroups(payload).groups[0].issues).toContainEqual(
       expect.objectContaining({ code: "missing-dimensions", fileName: "back.jpg" }),
+    );
+  });
+
+  it("requires a scanned source reference and content fingerprint", () => {
+    const payload = cloneSample();
+    payload.groups[0].files[0].sourceRef = undefined;
+    payload.groups[0].files[0].fingerprint = undefined;
+
+    expect(preflightGroups(payload).groups[0].issues).toContainEqual(
+      expect.objectContaining({ code: "missing-source-identity", fileName: "front.png" }),
     );
   });
 

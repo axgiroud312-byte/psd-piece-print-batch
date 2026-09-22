@@ -3,6 +3,7 @@ import { deflateSync } from "node:zlib";
 
 import {
   readImageDimensions,
+  resolveScannedInputFile,
   scanInputFolder,
   selectTemplateConfigJson,
 } from "../src/adapters/uxp-input-scanner";
@@ -118,7 +119,17 @@ describe("UXP input scanner", () => {
     const groups = await scanInputFolder(root as never, "binary");
 
     expect(groups).toHaveLength(1);
-    expect(groups[0].files).toContainEqual({ name: "前片.png", width: 24, height: 32 });
+    const scanned = groups[0].files.find((file) => file.name === "前片.png");
+    expect(scanned).toEqual(
+      expect.objectContaining({
+        name: "前片.png",
+        width: 24,
+        height: 32,
+        sourceRef: expect.any(String),
+        fingerprint: expect.any(String),
+      }),
+    );
+    expect(resolveScannedInputFile(scanned!.sourceRef!, scanned!.fingerprint!)).toBe(goodFile);
     expect(groups[0].files.find((file) => file.name === "损坏.jpg")?.metadataError).toBeTruthy();
     expect(groups[0].files).toContainEqual({ name: "说明.txt" });
   });
@@ -189,5 +200,39 @@ describe("UXP input scanner", () => {
     };
 
     await expect(selectTemplateConfigJson(storage as never)).resolves.toBe('{"schemaVersion":1}');
+  });
+
+  it("never rebinds an old source reference after scanning an identically named root", async () => {
+    const makeRoot = (file: object) => ({
+      name: "输入",
+      isFile: false,
+      isFolder: true,
+      getEntries: async () => [
+        {
+          name: "款式001",
+          isFile: false,
+          isFolder: true,
+          getEntries: async () => [file],
+        },
+      ],
+    });
+    const firstFile = {
+      name: "front.png",
+      isFile: true,
+      isFolder: false,
+      read: async () => png(10, 10),
+    };
+    const secondFile = {
+      name: "front.png",
+      isFile: true,
+      isFolder: false,
+      read: async () => png(20, 20),
+    };
+
+    const first = (await scanInputFolder(makeRoot(firstFile) as never, "binary"))[0].files[0];
+    const second = (await scanInputFolder(makeRoot(secondFile) as never, "binary"))[0].files[0];
+
+    expect(() => resolveScannedInputFile(first.sourceRef!, first.fingerprint!)).toThrow("来源引用已失效");
+    expect(resolveScannedInputFile(second.sourceRef!, second.fingerprint!)).toBe(secondFile);
   });
 });

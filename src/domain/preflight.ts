@@ -313,6 +313,16 @@ function preflightGroup(
       });
       continue;
     }
+    if (!file.sourceRef?.trim() || !file.fingerprint?.trim()) {
+      issues.push({
+        severity: "error",
+        code: "missing-source-identity",
+        message: `${file.name} 缺少来源引用或内容指纹，请重新扫描素材目录`,
+        entryId: entry.id,
+        fileName: file.name,
+      });
+      continue;
+    }
     if (!Number.isInteger(file.width) || !Number.isInteger(file.height) || file.width! <= 0 || file.height! <= 0) {
       issues.push({
         severity: "error",
@@ -360,6 +370,8 @@ function preflightGroup(
         entryId: entry.id,
         contentSourceId: entry.contentSourceId,
         fileName: file.name,
+        sourceRef: file.sourceRef,
+        sourceFingerprint: file.fingerprint,
       });
       assignedSources.add(entry.contentSourceId);
     }
@@ -479,11 +491,19 @@ function parseInputFile(value: unknown): InputFileSnapshot {
   const width = optionalNumber(value, "width");
   const height = optionalNumber(value, "height");
   const ppi = optionalNumber(value, "ppi");
+  const sourceRef = value.sourceRef;
+  const fingerprint = value.fingerprint;
   const metadataError = value.metadataError;
+  if (fingerprint !== undefined && (typeof fingerprint !== "string" || fingerprint.trim() === "")) {
+    throw new Error("字段 fingerprint 必须是非空字符串");
+  }
+  if (sourceRef !== undefined && (typeof sourceRef !== "string" || sourceRef.trim() === "")) {
+    throw new Error("字段 sourceRef 必须是非空字符串");
+  }
   if (metadataError !== undefined && typeof metadataError !== "string") {
     throw new Error("字段 metadataError 必须是字符串");
   }
-  return { name: requireString(value, "name"), width, height, ppi, metadataError };
+  return { name: requireString(value, "name"), width, height, ppi, sourceRef, fingerprint, metadataError };
 }
 
 function parseTemplateRecord(template: Record<string, unknown>): TemplateConfig {

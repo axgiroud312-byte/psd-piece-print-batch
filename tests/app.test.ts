@@ -47,4 +47,15 @@ describe("diagnostic panel", () => {
     expect(document.body.textContent).toContain("款式001-蓝花");
     expect(document.body.textContent).toContain("缺少必需素材 back");
   });
+
+  it("runs the complete single-group diagnostic transaction", async () => {
+    document.querySelector<HTMLButtonElement>('[data-stage="preview"]')!.click();
+    document.querySelector<HTMLButtonElement>(".demo-runner__action")!.click();
+
+    await vi.waitFor(() => {
+      expect(document.querySelector(".demo-runner__status")?.textContent).toContain("演示完成");
+    });
+    expect(document.querySelector(".demo-runner__result")?.textContent).toContain("commit-result / completed");
+    expect(document.querySelector(".demo-runner__result")?.textContent).toContain("打开临时会话 0");
+  });
 });

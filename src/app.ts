@@ -1,7 +1,9 @@
 import { selectAndScanInputRoot, selectTemplateConfigJson } from "./adapters/uxp-input-scanner";
+import { MemoryBatchAdapter } from "./adapters/memory-batch-adapter";
 import { parseInputGroups, parseTemplateConfig, preflightGroups } from "./domain/preflight";
 import { samplePreflightPayload } from "./domain/sample";
 import type { PreflightReport } from "./domain/types";
+import { runSingleGroup } from "./workflow/run-group";
 
 export type StageId = "template" | "input" | "preview" | "run" | "results";
 
@@ -219,6 +221,66 @@ function renderPreflightTool(container: HTMLElement): void {
   container.appendChild(tool);
 }
 
+function renderDemoRunner(container: HTMLElement): void {
+  const tool = createElement("section", "demo-runner");
+  const explanation = createElement(
+    "p",
+    "demo-runner__body",
+    "使用内存适配器演示完整事务顺序。不会打开 Photoshop，也不会生成生产文件。",
+  );
+  const action = createElement("button", "primary-action demo-runner__action", "运行单组安全演示");
+  action.type = "button";
+  const result = createElement("div", "demo-runner__result");
+
+  action.addEventListener("click", () => {
+    void (async () => {
+      action.disabled = true;
+      action.textContent = "正在运行…";
+      clearElement(result);
+      const adapter = new MemoryBatchAdapter(samplePreflightPayload.template.masterFingerprint);
+      const masterBefore = adapter.masterStateDigest;
+      const run = await runSingleGroup(
+        {
+          runId: "diagnostic-single-group",
+          pluginVersion,
+          template: samplePreflightPayload.template,
+          group: samplePreflightPayload.groups[0],
+        },
+        adapter,
+      );
+      result.appendChild(
+        createElement(
+          "p",
+          `demo-runner__status demo-runner__status--${run.status}`,
+          run.status === "completed"
+            ? "内存演示完成：模拟提交边界已通过"
+            : `演示未完成：${run.error ?? run.status}`,
+        ),
+      );
+      result.appendChild(
+        createElement("p", "demo-runner__fingerprint", `任务指纹 ${run.taskFingerprint.slice(0, 16)}…`),
+      );
+      for (const event of run.events) {
+        result.appendChild(
+          createElement("p", "demo-runner__event", `${event.stage} / ${event.state} / ${event.message}`),
+        );
+      }
+      result.appendChild(
+        createElement(
+          "p",
+          "demo-runner__integrity",
+          `内存模型母版状态${masterBefore === adapter.masterStateDigest ? "未变化" : "已变化"} · 打开临时会话 ${adapter.openSessionCount}`,
+        ),
+      );
+      action.disabled = false;
+      action.textContent = "重新运行安全演示";
+    })();
+  });
+
+  appendChildren(tool, explanation, action, result);
+  container.appendChild(tool);
+}
+
 function renderStage(container: HTMLElement, stage: WorkflowStage): void {
   clearElement(container);
 
@@ -233,6 +295,7 @@ function renderStage(container: HTMLElement, stage: WorkflowStage): void {
   );
   appendChildren(container, eyebrow, title, description, notice);
   if (stage.id === "input") renderPreflightTool(container);
+  if (stage.id === "preview") renderDemoRunner(container);
 }
 
 export function mountApp(root: HTMLElement): void {
